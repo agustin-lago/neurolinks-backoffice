@@ -15,6 +15,7 @@ aquavita-multi.md
 *.log
 *qr.png
 instructivo_variables_entorno.txt
+supabase_backoffice_default_settings.sql
 node_modules
 test/
 md_planning/

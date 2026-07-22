@@ -1,6 +1,6 @@
 {
-  "name": "Bot WhatsApp BuilderBot",
-  "description": "Bot de WhatsApp con integración OpenAI, multiagente y soporte de comandos",
+  "name": "neurolinks-backoffice",
+  "description": "Soluciones para empresas",
   "plugins": [
     "docker"
   ],

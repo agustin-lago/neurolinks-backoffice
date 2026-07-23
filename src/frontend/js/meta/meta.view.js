@@ -186,6 +186,27 @@ window.metaView = (() => {
     }
 
     // ── Init / Destroy ────────────────────────────────────────────────────
+    function handleMetaLinkedMessage(event) {
+        if (event.origin !== window.location.origin) return;
+        if (!event.data || event.data.type !== 'meta-linked') return;
+        if (_popupCheckInterval) { clearInterval(_popupCheckInterval); _popupCheckInterval = null; }
+        const statusEl = document.getElementById('meta-onboard-status');
+        if (statusEl) statusEl.style.display = 'none';
+        const btn = document.getElementById('meta-onboard-btn');
+
+        if (event.data.status === 'pending-sync') {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Ingresar';
+                btn.onclick = syncAndSaveConnection;
+            }
+            showToast('Meta conectado correctamente. Presiona Ingresar para finalizar.', 'success');
+            return;
+        }
+
+        showToast('Meta conectado correctamente.', 'success');
+        setTimeout(() => checkMetaConnection(false), 1200);
+    }
     async function init() {
         _token = localStorage.getItem('backoffice_token') || localStorage.getItem('system_config_token') || '';
         _availableTemplates = [];
@@ -203,12 +224,14 @@ window.metaView = (() => {
         window.launchMetaOnboardingView = launchMetaOnboardingView;
         window.syncAndSaveConnection    = syncAndSaveConnection;
         window.startQuickBulkSend       = startQuickBulkSend;
+        window.addEventListener('message', handleMetaLinkedMessage);
 
         await checkMetaConnection();
     }
 
     function destroy() {
         if (_popupCheckInterval) { clearInterval(_popupCheckInterval); _popupCheckInterval = null; }
+        window.removeEventListener('message', handleMetaLinkedMessage);
         document.getElementById('tpl-preview-modal')?.remove();
         ['switchMetaTab', 'showTemplateDetail', 'startBulkSend', 'downloadBulkExcel',
          'toggleTagChip', 'toggleMetaAccordion', 'showTplPreviewModal', 'launchMetaOnboardingView',
@@ -652,28 +675,17 @@ window.metaView = (() => {
         const statusEl = document.getElementById('meta-onboard-status');
         if (statusEl) statusEl.style.display = 'block';
 
-        fetch('/api/backoffice/whatsapp/config?token=' + _token)
+        fetch('/api/backoffice/meta-auth/session?token=' + encodeURIComponent(_token), { method: 'POST' })
             .then(res => res.json())
             .then(data => {
-                if (!data.appId) {
+                if (!data.success || !data.url) {
                     popup.close();
                     if (statusEl) statusEl.style.display = 'none';
-                    showToast('⚠️ Faltan credenciales de Meta en el servidor', 'error');
+                    showToast('No se pudo generar la sesion segura de Meta', 'error');
                     return;
                 }
-                const origin = window.location.origin;
-                const url = new URL('https://duskcodes.com.ar/meta-auth');
-                url.searchParams.append('railwayProjectId', data.railwayProjectId);
-                url.searchParams.append('RAILWAY_PROJECT_ID', data.railwayProjectId);
-                url.searchParams.append('projectId', data.railwayProjectId);
-                url.searchParams.append('metaAppId', data.appId);
-                url.searchParams.append('metaAppSecret', data.appSecret);
-                if (data.configId) url.searchParams.append('configId', data.configId);
-                url.searchParams.append('projectUrl', origin);
-                url.searchParams.append('redirectUri', `${origin}/api/backoffice/whatsapp/onboard-callback`);
 
-                popup.location.href = url.toString();
-
+                popup.location.href = data.url;
                 if (_popupCheckInterval) clearInterval(_popupCheckInterval);
                 _popupCheckInterval = setInterval(() => {
                     if (popup.closed) {
@@ -682,7 +694,7 @@ window.metaView = (() => {
                         if (statusEl) statusEl.style.display = 'none';
                         const btn = document.getElementById('meta-onboard-btn');
                         if (btn) {
-                            btn.innerHTML = '<i class="fas fa-rotate"></i> Sincronizar y guardar';
+                            btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Ingresar';
                             btn.onclick = syncAndSaveConnection;
                         }
                     }
@@ -707,7 +719,7 @@ window.metaView = (() => {
             if (!data.success) {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-rotate"></i> Sincronizar y guardar';
+                    btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Ingresar';
                 }
                 showToast('Hubo un problema interno con las credenciales de vinculacion. Soporte sera notificado de este ticket.', 'error');
                 return;
@@ -720,7 +732,7 @@ window.metaView = (() => {
         } catch (_) {
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-rotate"></i> Sincronizar y guardar';
+                btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Ingresar';
             }
             showToast('Hubo un problema interno con las credenciales de vinculacion. Soporte sera notificado de este ticket.', 'error');
             return;
@@ -730,7 +742,7 @@ window.metaView = (() => {
         } catch (_) {
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-rotate"></i> Sincronizar y guardar';
+                btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Ingresar';
             }
             showToast('Hubo un problema interno con las credenciales de vinculacion. Soporte sera notificado de este ticket.', 'error');
         }

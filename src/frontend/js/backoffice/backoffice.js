@@ -2146,40 +2146,45 @@ function toggleMetaPanel(e) {
 // No sobreescribir window.toggleMetaPanel - crm-common.js lo maneja
 window.realToggleMeta = toggleMetaPanel;
 
+if (!window.__metaLinkedListenerAttached) {
+    window.__metaLinkedListenerAttached = true;
+    window.addEventListener('message', (event) => {
+        if (event.origin !== window.location.origin) return;
+        if (!event.data || event.data.type !== 'meta-linked') return;
+        showToast('Meta conectado correctamente.', 'success');
+        if (typeof checkMetaStatus === 'function') {
+            setTimeout(() => checkMetaStatus(), 1200);
+        }
+    });
+}
 function launchMetaOnboarding() {
     const activeToken = localStorage.getItem('system_config_token') || localStorage.getItem('backoffice_token');
-    fetch('/api/backoffice/whatsapp/config?token=' + activeToken)
+    const width = 600;
+    const height = 800;
+    const left = (window.screen.width / 2) - (width / 2);
+    const top = (window.screen.height / 2) - (height / 2);
+    const popup = window.open('about:blank', 'MetaOnboarding',
+        `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no,menubar=no`);
+
+    if (!popup) {
+        showToast('El navegador bloqueo la ventana emergente. Permitila e intenta de nuevo.', 'error');
+        return;
+    }
+
+    fetch('/api/backoffice/meta-auth/session?token=' + encodeURIComponent(activeToken), { method: 'POST' })
         .then(res => res.json())
         .then(data => {
-            if (!data.appId || !data.railwayProjectId) {
-                showToast('⚠️ Faltan credenciales de Meta o Project ID en el servidor', 'error');
+            if (!data.success || !data.url) {
+                popup.close();
+                showToast('No se pudo generar la sesion segura de Meta', 'error');
                 return;
             }
-
-            // Abrir DuskCodes con parámetros de redirección dinámica
-            const url = new URL('https://duskcodes.com.ar/meta-auth');
-            const currentOrigin = window.location.origin;
-
-            url.searchParams.append('railwayProjectId', data.railwayProjectId);
-            url.searchParams.append('RAILWAY_PROJECT_ID', data.railwayProjectId);
-            url.searchParams.append('projectId', data.railwayProjectId);
-            url.searchParams.append('metaAppId', data.appId);
-            url.searchParams.append('metaAppSecret', data.appSecret);
-            if (data.configId) url.searchParams.append('configId', data.configId);
-            url.searchParams.append('projectUrl', currentOrigin);
-            url.searchParams.append('redirectUri', `${currentOrigin}/api/backoffice/whatsapp/onboard-callback`);
-
-            const width = 600;
-            const height = 800;
-            const left = (window.screen.width / 2) - (width / 2);
-            const top = (window.screen.height / 2) - (height / 2);
-
-            window.open(url.toString(), 'MetaOnboarding',
-                `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,status=no,menubar=no`);
+            popup.location.href = data.url;
         })
         .catch(err => {
+            popup.close();
             console.error(err);
-            showToast('❌ Error de conexión al obtener configuración', 'error');
+            showToast('Error de conexion al iniciar Meta', 'error');
         });
 }
 

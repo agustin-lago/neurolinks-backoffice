@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { execSync, exec } from 'child_process';
 import url from 'url';
 import bodyParser from 'body-parser';
@@ -103,6 +104,48 @@ async function triggerMetaSync(accessToken: string, phoneId: string) {
     console.log(`✅ [SMB-SYNC] Solicitud de Historial enviada.`);
 }
 
+function signMetaSessionPayload(payload: string, secret: string) {
+    return crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+}
+
+function timingSafeTextEqual(a: any, b: any) {
+    const left = Buffer.from(String(a || ''));
+    const right = Buffer.from(String(b || ''));
+    return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+function buildMetaPopupResultPage(title: string, detail: string, status: 'success' | 'manual-success' = 'success') {
+    const safeTitle = JSON.stringify(title);
+    const safeDetail = JSON.stringify(detail);
+    const safeStatus = JSON.stringify(status);
+    return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <style>
+    body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1117;color:#f8fafc}
+    main{max-width:520px;padding:32px;text-align:center}
+    .icon{width:74px;height:74px;border-radius:22px;background:#10b981;display:grid;place-items:center;margin:0 auto 22px;font-size:24px;font-weight:800;color:#fff}
+    h1{margin:0 0 10px;font-size:26px}p{margin:0;color:#b8c0cc;line-height:1.5}
+  </style>
+</head>
+<body>
+  <main><div class="icon">OK</div><h1>${title}</h1><p>${detail}</p></main>
+  <script>
+    const title = ${safeTitle};
+    const detail = ${safeDetail};
+    const status = ${safeStatus};
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'meta-linked', status, title, detail }, window.location.origin);
+        setTimeout(() => window.close(), 1800);
+      }
+    } catch (_) {}
+  </script>
+</body>
+</html>`;
+}
 /** Función unificada para procesar el envío de mensajes e historial */
 export const processSendMessage = async (
     req: any, 
@@ -1821,17 +1864,57 @@ export const registerBackofficeRoutes = (app: any) => {
         if (isAbsent(mergedConfig.access_token)   && process.env.META_ACCESS_TOKEN) mergedConfig.access_token   = process.env.META_ACCESS_TOKEN;
 
         const dbAppId = await depsHistoryHandler.getConfig('META_APP_ID', projectId);
-        const dbAppSecret = await depsHistoryHandler.getConfig('META_APP_SECRET', projectId);
         const dbConfigId = await depsHistoryHandler.getConfig('META_CONFIG_ID', projectId);
 
         res.json({
             success: true,
             appId: dbAppId || process.env.META_APP_ID,
-            appSecret: dbAppSecret || process.env.META_APP_SECRET,
             configId: dbConfigId || process.env.META_CONFIG_ID,
             railwayProjectId: projectId,
             config: mergedConfig
         });
+    });
+
+    app.post('/api/backoffice/meta-auth/session', backofficeAuth, bodyParser.json(), async (req: any, res: any) => {
+        try {
+            const projectId = resolveProjectId(req) || process.env.RAILWAY_PROJECT_ID || 'default';
+            const appId = await depsHistoryHandler.getConfig('META_APP_ID', projectId) || process.env.META_APP_ID || '1493670789148486';
+            const configId = await depsHistoryHandler.getConfig('META_CONFIG_ID', projectId) || process.env.META_CONFIG_ID || '770821995864139';
+            const metaAuthUrl = await depsHistoryHandler.getConfig('META_AUTH_URL', projectId) || process.env.META_AUTH_URL || 'https://meta-auth.clientesneurolinks.com/meta-auth';
+            const sharedSecret = await depsHistoryHandler.getConfig('META_AUTH_SHARED_SECRET', projectId) || process.env.META_AUTH_SHARED_SECRET;
+
+            if (!appId || !configId || !metaAuthUrl || !sharedSecret) {
+                return res.status(400).json({ success: false, error: 'Faltan META_APP_ID, META_CONFIG_ID, META_AUTH_URL o META_AUTH_SHARED_SECRET.' });
+            }
+
+            const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+            const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+            const host = forwardedHost || String(req.headers.host || '').trim();
+            const proto = forwardedProto || (host.includes('localhost') ? 'http' : 'https');
+            if (!host) {
+                return res.status(400).json({ success: false, error: 'No se pudo resolver el dominio del backoffice.' });
+            }
+
+            const origin = proto + '://' + host;
+            const state = crypto.randomUUID();
+            const payload = Buffer.from(JSON.stringify({
+                projectId,
+                redirectUri: origin + '/api/backoffice/whatsapp/onboard-callback',
+                metaAppId: appId,
+                configId,
+                state,
+                exp: Math.floor(Date.now() / 1000) + 600
+            })).toString('base64url');
+            const sig = crypto.createHmac('sha256', sharedSecret).update(payload).digest('base64url');
+            const url = new URL(metaAuthUrl);
+            url.searchParams.set('payload', payload);
+            url.searchParams.set('sig', sig);
+
+            res.json({ success: true, url: url.toString() });
+        } catch (error: any) {
+            console.error('[META-AUTH] Error generando sesion firmada:', error.message);
+            res.status(500).json({ success: false, error: error.message });
+        }
     });
 
     app.post('/api/backoffice/whatsapp/sync-manual', backofficeAuth, bodyParser.json(), async (req: any, res: any) => {
@@ -2540,114 +2623,46 @@ export const registerBackofficeRoutes = (app: any) => {
 
             // 3. Verificación de resultados y depuración de scopes si falló todo
             if (!discovery.found && !pageDiscovery) {
-                console.warn('⚠️ [CALLBACK] No se pudo descubrir ningún recurso automáticamente.');
-                
-                const diagHtml = discovery.diagnostics.map(d => `
-                    <div style="margin-bottom: 15px; border-bottom: 1px solid #edf2f7; padding-bottom: 10px;">
-                        <div style="display: flex; align-items: center; justify-content: space-between;">
-                            <strong style="font-size: 14px; color: #2d3748;">${d.step}</strong>
-                            <span style="font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: bold; text-transform: uppercase; 
-                                background: ${d.status === 'success' ? '#c6f6d5' : d.status === 'empty' ? '#feebc8' : '#fed7d7'}; 
-                                color: ${d.status === 'success' ? '#22543d' : d.status === 'empty' ? '#744210' : '#822727'};">
-                                ${d.status}
-                            </span>
+                console.warn('[CALLBACK] No se pudo descubrir ningun recurso automaticamente. Guardando token y mostrando confirmacion al usuario.');
+
+                // Guardar el token y diagnosticos para auditoria interna, sin exponer IDs al usuario.
+                await depsHistoryHandler.saveMetaOnboardingData(
+                    null as any,
+                    null as any,
+                    accessToken,
+                    { diagnostics: discovery.diagnostics, pendingDiscovery: true },
+                    projectId
+                );
+
+                const htmlFallbackSuccess = `
+                    <div style="font-family: Inter, system-ui, sans-serif; min-height: 100vh; margin: 0; display: grid; place-items: center; background: #0f172a; color: #f8fafc; padding: 24px;">
+                        <div style="width: min(460px, 100%); background: #111827; border: 1px solid #263244; border-radius: 18px; padding: 32px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.35);">
+                            <div style="width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 18px; background: #16a34a; color: white; font-weight: 800; font-size: 24px;">OK</div>
+                            <h1 style="margin: 0 0 10px; font-size: 28px; line-height: 1.1;">Configuracion completa</h1>
+                            <p style="margin: 0 0 24px; color: #cbd5e1; line-height: 1.5;">Para finalizar, presione el siguiente boton:</p>
+                            <button id="confirmMetaDone" style="width: 100%; border: 0; border-radius: 12px; padding: 14px 18px; font-size: 16px; font-weight: 800; color: white; background: #2563eb; cursor: pointer;">Sincronizar & Guardar</button>
                         </div>
-                        <p style="font-size: 13px; color: #4a5568; margin: 4px 0;">${d.description}</p>
-                        ${d.error ? `<p style="font-size: 12px; color: #e53e3e; font-family: monospace; background: #fff5f5; padding: 5px; border-radius: 4px; margin: 2px 0;">${d.error}</p>` : ''}
-                        ${d.fbtrace_id ? `<p style="font-size: 10px; color: #a0aec0;">fbtrace_id: ${d.fbtrace_id}</p>` : ''}
-                    </div>
-                `).join('');
-
-                const htmlError = `
-                    <div style="font-family: sans-serif; padding: 40px; color: #2d3748; max-width: 800px; margin: 0 auto; line-height: 1.6; background: #f7fafc; min-height: 100vh;">
-                        <div style="background: white; padding: 40px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
-                            <h1 style="color: #e53e3e; margin-bottom: 10px; font-size: 28px; font-weight: 800; text-align: center;">Configuración Incompleta</h1>
-                            <p style="color: #718096; margin-bottom: 30px; text-align: center;">Hemos vinculado tu cuenta de Meta, pero no pudimos encontrar automáticamente una cuenta de WhatsApp Cloud API activa.</p>
-                            
-                            <div style="margin-top: 30px; background: #ebf8ff; padding: 25px; border-radius: 12px; border: 1px solid #bee3f8; text-align: left;">
-                                <h3 style="margin-top: 0; color: #2b6cb0; font-size: 18px;">Opción 1: Configuración Manual (Recomendado)</h3>
-                                <p style="font-size: 14px; margin-bottom: 20px;">Si conoces tus IDs de WhatsApp, ingrésalos aquí. Esto activará el bot directamente sin validación por SMS.</p>
-                                
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                    <div>
-                                        <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #4a5568;">WABA ID (Account):</label>
-                                        <input type="text" id="wabaManual" placeholder="1234567890..." style="width: 100%; padding: 12px; border: 1px solid #cbd5e0; border-radius: 8px; box-sizing: border-box;">
-                                    </div>
-                                    <div>
-                                        <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #4a5568;">Phone Number ID:</label>
-                                        <input type="text" id="phoneManual" placeholder="9876543210..." style="width: 100%; padding: 12px; border: 1px solid #cbd5e0; border-radius: 8px; box-sizing: border-box;">
-                                    </div>
-                                </div>
-
-                                <button onclick="saveManual()" id="btnSaveManual" style="background: #3182ce; color: white; padding: 15px 25px; border-radius: 10px; border: none; font-weight: bold; width: 100%; margin-top: 20px; cursor: pointer; transition: all 0.2s;">
-                                    Vincular con estos IDs
-                                </button>
-                            </div>
-
-                            <div style="margin-top: 35px; border-top: 1px solid #edf2f7; padding-top: 25px; text-align: center;">
-                                <button onclick="toggleLogs()" style="background: #edf2f7; border: none; padding: 10px 20px; border-radius: 8px; font-size: 13px; color: #4a5568; cursor: pointer; font-weight: 600;">
-                                    🔍 Ver Diagnóstico Técnico del Descubrimiento
-                                </button>
-
-                                <div id="logSection" style="display: none; margin-top: 20px; text-align: left; background: white; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px; max-height: 400px; overflow-y: auto;">
-                                    ${diagHtml}
-                                </div>
-                            </div>
-
-                            <div style="margin-top: 40px; font-size: 13px; color: #a0aec0; text-align: center;">
-                                <p>Tip: Asegúrate de que tu cuenta de WhatsApp esté validada en el panel de Meta Developer antes de intentar la vinculación.</p>
-                            </div>
-                        </div>
-
                         <script>
-                            const projectId = "${projectId}";
-                            const accessToken = "${accessToken}";
-
-                            function toggleLogs() {
-                                const section = document.getElementById('logSection');
-                                section.style.display = section.style.display === 'none' ? 'block' : 'none';
-                            }
-
-                            async function saveManual() {
-                                const waba = document.getElementById('wabaManual').value;
-                                const phone = document.getElementById('phoneManual').value;
-                                if (!waba || !phone) return alert('Por favor completa ambos IDs');
-                                
-                                document.getElementById('btnSaveManual').innerText = 'Guardando...';
-                                document.getElementById('btnSaveManual').disabled = true;
-
+                            function finishMetaFlow() {
                                 try {
-                                    const res = await fetch('/api/backoffice/whatsapp/sync-manual', {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ 
-                                            token: accessToken,
-                                            wabaId: waba,
-                                            phoneNumberId: phone,
-                                            projectId: projectId
-                                        })
-                                    });
-                                    const data = await res.json();
-                                    if (data.success) {
-                                        window.location.href = window.location.origin + "/dashboard.html?metaStatus=success";
-                                    } else {
-                                        alert('Error: ' + data.error);
-                                        document.getElementById('btnSaveManual').innerText = 'Vincular con estos IDs';
-                                        document.getElementById('btnSaveManual').disabled = false;
+                                    if (window.opener && !window.opener.closed) {
+                                        window.opener.postMessage({
+                                            type: 'meta-linked',
+                                            status: 'pending-sync',
+                                            title: 'Meta conectado',
+                                            detail: 'La vinculacion se completo correctamente.'
+                                        }, window.location.origin);
                                     }
-                                } catch (e) {
-                                    alert('Error de conexión: ' + e.message);
-                                }
+                                } catch (_) {}
+                                window.close();
                             }
+                            document.getElementById('confirmMetaDone').addEventListener('click', finishMetaFlow);
                         </script>
                     </div>
                 `;
 
-                // Guardar solo el token para futuras referencias
-                await depsHistoryHandler.saveMetaOnboardingData(null as any, null as any, accessToken, { diagnostics: discovery.diagnostics }, projectId);
-                return res.send(htmlError);
+                return res.send(htmlFallbackSuccess);
             }
-
             // Registrar y suscribir WhatsApp si se encontró
             const tokenToUse = mainToken || accessToken;
             if (finalPhoneId) {
@@ -2700,7 +2715,7 @@ export const registerBackofficeRoutes = (app: any) => {
                 process.exit(1);
             }, 5000);
 
-            return res.redirect("https://duskcodes.com.ar/dashboard.html?metaStatus=success");
+            return res.send(buildMetaPopupResultPage('Meta conectado', 'La vinculacion termino correctamente. Esta ventana se cerrara automaticamente.'));
 
         } catch (error: any) {
             console.error('❌ [CALLBACK] Error en vinculación Meta:', error.response?.data || error.message);
@@ -2714,7 +2729,7 @@ export const registerBackofficeRoutes = (app: any) => {
                         <pre style="font-size: 12px; color: #718096; margin: 0;">${errorDetails}</pre>
                     </div>
                     <div style="margin-top: 30px;">
-                        <a href="https://duskcodes.com.ar/dashboard.html" style="background: #3182ce; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none;">Volver al Dashboard</a>
+                        <a href="/dashboard.html" style="background: #3182ce; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none;">Volver al Dashboard</a>
                     </div>
                 </div>
             `);
@@ -2725,36 +2740,58 @@ export const registerBackofficeRoutes = (app: any) => {
      * Endpoint para vinculación manual de IDs si el auto-descubrimiento falló.
      * También dispara la sincronización SMB automática.
      */
-    app.post('/api/backoffice/whatsapp/sync-manual', bodyParser.json(), async (req: any, res: any) => {
-        const { token, wabaId, phoneNumberId, projectId } = req.body;
-        if (!token || !wabaId || !phoneNumberId) {
+    app.post('/api/backoffice/whatsapp/sync-manual-onboarding', bodyParser.json(), async (req: any, res: any) => {
+        const { manualPayload, manualSig, wabaId, phoneNumberId } = req.body;
+        if (!manualPayload || !manualSig || !wabaId || !phoneNumberId) {
             return res.status(400).json({ success: false, error: 'Faltan campos obligatorios' });
         }
 
+        let session: any;
         try {
-            console.log(`📡 [SYNC-MANUAL] Vinculando manualmente para Proyecto: ${projectId}`);
-            await depsHistoryHandler.saveMetaOnboardingData(wabaId, phoneNumberId, token, { manual: true }, projectId);
+            session = JSON.parse(Buffer.from(String(manualPayload), 'base64url').toString('utf8'));
+        } catch (_) {
+            return res.status(400).json({ success: false, error: 'Sesion manual invalida' });
+        }
+
+        const projectId = String(session?.projectId || '').trim();
+        const token = String(session?.token || '').trim();
+        const exp = Number(session?.exp || 0);
+        if (!projectId || !token || !exp || exp < Math.floor(Date.now() / 1000)) {
+            return res.status(403).json({ success: false, error: 'Sesion manual expirada o incompleta' });
+        }
+
+        try {
+            const appSecret = await depsHistoryHandler.getConfig('META_APP_SECRET', projectId) || process.env.META_APP_SECRET || '';
+            const sharedSecret = await depsHistoryHandler.getConfig('META_AUTH_SHARED_SECRET', projectId) || process.env.META_AUTH_SHARED_SECRET || appSecret;
+            if (!sharedSecret) {
+                return res.status(500).json({ success: false, error: 'META_AUTH_SHARED_SECRET no configurado' });
+            }
+
+            const expectedSig = signMetaSessionPayload(String(manualPayload), sharedSecret);
+            if (!timingSafeTextEqual(manualSig, expectedSig)) {
+                return res.status(403).json({ success: false, error: 'Firma manual invalida' });
+            }
+
+            console.log(`[SYNC-MANUAL] Vinculando manualmente para Proyecto: ${projectId}`);
+            await depsHistoryHandler.saveMetaOnboardingData(wabaId, phoneNumberId, token, { manual: true, syncedBy: 'manual-onboarding-fallback' }, projectId);
             
-            // Disparar sincronización SMB
             try {
                 await triggerMetaSync(token, phoneNumberId);
             } catch (syncErr: any) {
-                console.warn('⚠️ [SYNC-MANUAL] Sincronización automática manual falló (omitiendo para no bloquear la vinculación):', syncErr.response?.data || syncErr.message);
+                console.warn('[SYNC-MANUAL] Sincronizacion automatica manual fallo (omitiendo para no bloquear la vinculacion):', syncErr.response?.data || syncErr.message);
             }
 
-            // Programar reinicio
             setTimeout(() => {
-                console.log('🔄 [SYSTEM] Reiniciando bot por vinculación manual...');
+                console.log('[SYSTEM] Reiniciando bot por vinculacion manual...');
                 process.exit(1);
             }, 3000);
 
             res.json({ success: true });
         } catch (error: any) {
-            console.error('❌ [SYNC-MANUAL] Error:', error);
+            console.error('[SYNC-MANUAL] Error:', error);
             res.status(500).json({ success: false, error: error.message });
         }
     });
-
     app.post('/api/backoffice/whatsapp/sync-ids', backofficeAuth, async (req: any, res: any) => {
         const projectId = (req.query.projectId as string) || process.env.RAILWAY_PROJECT_ID || 'default';
         console.log(`🔄 [SYNC-IDS] Iniciando sincronizacion para proyecto: ${projectId}`);
@@ -2899,7 +2936,7 @@ export const registerBackofficeRoutes = (app: any) => {
                 data.phoneNumberId || data.phone_number_id || "PENDING", 
                 data.wabaId || data.waba_id || "PENDING",
                 data.accessToken || data.access_token,
-                { ...data, syncedBy: 'duskcodes-master-router' }
+                { ...data, syncedBy: 'neurolinks-meta-auth' }
             );
             res.json(result);
         } catch (error: any) {

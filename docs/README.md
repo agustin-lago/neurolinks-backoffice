@@ -153,3 +153,5 @@ El flujo recomendado para un nuevo deploy/template es:
 - `docs/modulos/session-sync.md`: sesiones WhatsApp.
 - `docs/api/backoffice.md`: API del backoffice.
 - `docs/whatsapp/comandos.md`: comandos administrativos.
+
+## Última prueba de update Railway: 2026-07-23

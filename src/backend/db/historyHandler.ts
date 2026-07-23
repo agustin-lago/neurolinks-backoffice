@@ -384,11 +384,11 @@ export class HistoryHandler {
                     if (columnError && columnError.code === '42703') {
                         console.log(`🔧 Actualizando tabla '${table.name}' para incluir project_id...`);
                         const alterSql = table.name === 'chats'
-                            ? `ALTER TABLE chats ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT 'default_project'; 
-                               DO $$ 
-                               BEGIN 
+                            ? `ALTER TABLE chats ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT 'default_project';
+                               DO $$
+                               BEGIN
                                  IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='chats_pkey') THEN
-                                   ALTER TABLE chats DROP CONSTRAINT chats_pkey; 
+                                   ALTER TABLE chats DROP CONSTRAINT chats_pkey;
                                  END IF;
                                END $$;
                                ALTER TABLE chats ADD PRIMARY KEY (id, project_id);`
@@ -429,10 +429,10 @@ export class HistoryHandler {
                         if (crmExtraErr && crmExtraErr.code === '42703') {
                             console.log(`🔧 Agregando columnas adicionales CRM a chats...`);
                             await supabase.rpc('exec_sql', {
-                                query: `ALTER TABLE chats 
-                                        ADD COLUMN IF NOT EXISTS cuit_dni TEXT, 
-                                        ADD COLUMN IF NOT EXISTS address TEXT, 
-                                        ADD COLUMN IF NOT EXISTS tax_status TEXT, 
+                                query: `ALTER TABLE chats
+                                        ADD COLUMN IF NOT EXISTS cuit_dni TEXT,
+                                        ADD COLUMN IF NOT EXISTS address TEXT,
+                                        ADD COLUMN IF NOT EXISTS tax_status TEXT,
                                         ADD COLUMN IF NOT EXISTS offered_product TEXT;`
                             });
                         }
@@ -516,10 +516,10 @@ export class HistoryHandler {
                             console.log(`🔧 Migrando tabla mercadopago_acount_user para soportar múltiples cuentas...`);
                             const migrationSql = `
                                 ALTER TABLE mercadopago_acount_user ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT false;
-                                DO $$ 
-                                BEGIN 
+                                DO $$
+                                BEGIN
                                   IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='mercadopago_acount_user_pkey') THEN
-                                    ALTER TABLE mercadopago_acount_user DROP CONSTRAINT mercadopago_acount_user_pkey; 
+                                    ALTER TABLE mercadopago_acount_user DROP CONSTRAINT mercadopago_acount_user_pkey;
                                   END IF;
                                 END $$;
                                 DO $$
@@ -2072,11 +2072,11 @@ export class HistoryHandler {
                 .select('*', { count: 'exact', head: true })
                 .eq('project_id', currentProjectId)
                 .in('estado', ['Abierto', 'En progreso']);
-            
+
             if (tipo) {
                 query = query.eq('tipo', tipo);
             }
-            
+
             const { count, error } = await query;
             if (error) throw error;
             return count || 0;
@@ -2696,7 +2696,10 @@ export class HistoryHandler {
                 const value = payload.new?.value;
                 if (!key) return;
                 this.invalidateSettingCache(key);
-                console.log(`📡 [Realtime] Setting cambiado: ${key} = ${value}`);
+                const displayVal = (key.toUpperCase().includes('KEY') || key.toUpperCase().includes('TOKEN') || key.toUpperCase().includes('SECRET') || key.toUpperCase().includes('PASS') || key.toUpperCase().includes('PWD'))
+                    ? 'OK'
+                    : value;
+                console.log(`📡 [Realtime] Setting cambiado: ${key} = ${displayVal}`);
                 historyEvents.emit('setting_changed', { key, value, projectId });
             })
             .subscribe((status: string) => {
@@ -2875,7 +2878,7 @@ export class HistoryHandler {
         if (key === 'CRM_FIELDS_CONFIG' && (!value || value.trim() === '')) {
             const slug = await this.getConfig('CLIENT_SLUG', targetProjectId);
             const cleanSlug = String(slug || '').trim().toLowerCase();
-            
+
             if (cleanSlug === 'ganemos' || cleanSlug === 'ganemos-net' || cleanSlug === 'cas-epc' || cleanSlug === 'casepc') {
                 value = JSON.stringify([
                     { id: 'crm-ticket-title', label: 'Titulo del Ticket', visible: true, order: 0 },
@@ -3145,12 +3148,15 @@ export class HistoryHandler {
                 data.forEach(setting => {
                     if (setting.value && setting.value !== 'PENDING') {
                         const isFixed = HistoryHandler.FIXED_KEYS.includes(setting.key);
-                        if (isFixed && process.env[setting.key] && process.env[setting.key] !== '') {
-                            if (process.env[setting.key] !== setting.value) {
+                        const envVal = process.env[setting.key];
+                        const isEnvInvalid = !envVal || envVal.trim() === '' || envVal.trim() === 'PENDING';
+
+                        if (isFixed && !isEnvInvalid) {
+                            if (envVal !== setting.value) {
                                 // console.log(`ℹ️ [HistoryHandler] Manteniendo valor de entorno estático para la llave fija '${setting.key}' (ignorando valor DB: ${setting.value.substring(0, 5)}...)`);
                             }
                         } else {
-                            if (process.env[setting.key] !== setting.value) {
+                            if (envVal !== setting.value) {
                                 // console.log(`🔄 [HistoryHandler] Sobreescribiendo '${setting.key}' con valor de Base de Datos (prioridad DB).`);
                             }
                             process.env[setting.key] = setting.value;

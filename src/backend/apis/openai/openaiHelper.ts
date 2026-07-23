@@ -8,11 +8,15 @@ let _openai: OpenAI | null = null;
 let _openaiVision: OpenAI | null = null;
 let _lastKey: string | null = null;
 let _lastVisionKey: string | null = null;
+let _lastBaseUrl: string | undefined = undefined;
+let _lastVisionBaseUrl: string | undefined = undefined;
+let _lastProxyAuthToken: string = '';
+let _lastVisionProxyAuthToken: string = '';
 
 export function getOpenAIBaseUrl(): string | undefined {
     const envBaseURL = process.env.OPENAI_BASE_URL;
     if (!envBaseURL) {
-        return "https://proxy.duskcodes.com.ar/v1";
+        return "https://openai-proxy.clientesneurolinks.com/v1";
     }
     
     let clean = envBaseURL.trim();
@@ -24,6 +28,18 @@ export function getOpenAIBaseUrl(): string | undefined {
     return clean.toLowerCase() === 'direct' ? undefined : clean;
 }
 
+function getOpenAIProxyHeaders(baseURL: string | undefined): Record<string, string> | undefined {
+    const token = process.env.PROXY_AUTH_TOKEN || '';
+    if (!baseURL || !token) return undefined;
+
+    try {
+        new URL(baseURL);
+    } catch {
+        return undefined;
+    }
+
+    return { 'x-proxy-token': token };
+}
 /**
  * Obtiene la instancia de OpenAI principal de forma dinámica.
  */
@@ -34,14 +50,19 @@ export async function getOpenAI(): Promise<OpenAI | null> {
         console.warn(`📡 [OpenAI] ⚠️ No se detectó una OPENAI_API_KEY válida (vacía o por defecto). getOpenAI() retornará null.`);
         return null;
     }
-    if (key !== _lastKey) {
-        console.log(`📡 [OpenAI] Inicializando nueva instancia con Hot-update Key: ${key.slice(0, 8)}...`);
-        const baseURL = getOpenAIBaseUrl();
+    const baseURL = getOpenAIBaseUrl();
+    const proxyAuthToken = process.env.PROXY_AUTH_TOKEN || '';
+    if (key !== _lastKey || baseURL !== _lastBaseUrl || proxyAuthToken !== _lastProxyAuthToken) {
+        console.log(`[OpenAI] Inicializando nueva instancia con Hot-update Key: ${key.slice(0, 8)}...`);
+        const defaultHeaders = getOpenAIProxyHeaders(baseURL);
         _openai = new OpenAI({ 
             apiKey: key,
-            ...(baseURL ? { baseURL } : {})
+            ...(baseURL ? { baseURL } : {}),
+            ...(defaultHeaders ? { defaultHeaders } : {})
         });
         _lastKey = key;
+        _lastBaseUrl = baseURL;
+        _lastProxyAuthToken = proxyAuthToken;
     }
     return _openai;
 }
@@ -54,13 +75,18 @@ export async function getOpenAIVision(): Promise<OpenAI | null> {
     const key = await HistoryHandler.getConfig('OPENAI_API_KEY_IMG');
     
     if (!key) return await getOpenAI(); // Fallback al principal
-    if (key !== _lastVisionKey) {
-        const baseURL = getOpenAIBaseUrl();
+    const baseURL = getOpenAIBaseUrl();
+    const proxyAuthToken = process.env.PROXY_AUTH_TOKEN || '';
+    if (key !== _lastVisionKey || baseURL !== _lastVisionBaseUrl || proxyAuthToken !== _lastVisionProxyAuthToken) {
+        const defaultHeaders = getOpenAIProxyHeaders(baseURL);
         _openaiVision = new OpenAI({ 
             apiKey: key,
-            ...(baseURL ? { baseURL } : {})
+            ...(baseURL ? { baseURL } : {}),
+            ...(defaultHeaders ? { defaultHeaders } : {})
         });
         _lastVisionKey = key;
+        _lastVisionBaseUrl = baseURL;
+        _lastVisionProxyAuthToken = proxyAuthToken;
     }
     return _openaiVision;
 }
@@ -485,4 +511,3 @@ export const safeToAsk = async (
         new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_SAFE_TO_ASK')), SAFE_TIMEOUT))
     ]);
 };
-

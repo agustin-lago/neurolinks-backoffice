@@ -1899,7 +1899,8 @@ export const registerBackofficeRoutes = (app: any) => {
             const state = crypto.randomUUID();
             const payload = Buffer.from(JSON.stringify({
                 projectId,
-                redirectUri: origin + '/api/backoffice/whatsapp/onboard-callback',
+                callbackUri: origin + '/api/backoffice/whatsapp/onboard-callback',
+                openerOrigin: origin,
                 metaAppId: appId,
                 configId,
                 state,
@@ -2567,11 +2568,44 @@ export const registerBackofficeRoutes = (app: any) => {
     // --- ONBOARDING META ---
 
     app.get('/api/backoffice/whatsapp/onboard-callback', async (req: any, res: any) => {
-        const { code, wabaId: queryWabaId, phoneId: queryPhoneId, projectId: queryProjectId, state } = req.query;
-        const projectId = (queryProjectId as string) || (state as string) || process.env.RAILWAY_PROJECT_ID || 'default_project';
+        let signedCallback: any = null;
+        const rawMetaAuthPayload = String(req.query.metaAuthPayload || '').trim();
+        const rawMetaAuthSig = String(req.query.metaAuthSig || '').trim();
+
+        if (rawMetaAuthPayload || rawMetaAuthSig) {
+            if (!rawMetaAuthPayload || !rawMetaAuthSig || rawMetaAuthPayload.length > 4096 || rawMetaAuthSig.length > 256) {
+                return res.status(403).send('<h2>Acceso no autorizado</h2>');
+            }
+
+            try {
+                signedCallback = JSON.parse(Buffer.from(rawMetaAuthPayload, 'base64url').toString('utf8'));
+            } catch (_) {
+                return res.status(400).send('<h2>Callback invalido</h2>');
+            }
+
+            const signedProjectId = String(signedCallback?.projectId || '').trim();
+            const sharedSecret = await depsHistoryHandler.getConfig('META_AUTH_SHARED_SECRET', signedProjectId) || process.env.META_AUTH_SHARED_SECRET;
+            if (!signedProjectId || !sharedSecret) {
+                return res.status(403).send('<h2>Acceso no autorizado</h2>');
+            }
+
+            const expectedSig = signMetaSessionPayload(rawMetaAuthPayload, sharedSecret);
+            const isValidSig = timingSafeTextEqual(rawMetaAuthSig, expectedSig);
+            const isExpired = !signedCallback?.exp || Number(signedCallback.exp) < Math.floor(Date.now() / 1000);
+            if (!isValidSig || isExpired) {
+                return res.status(403).send('<h2>Sesion expirada o invalida</h2>');
+            }
+        }
+
+        const code = String(signedCallback?.code || req.query.code || '').trim();
+        const queryWabaId = String(signedCallback?.wabaId || req.query.wabaId || '').trim();
+        const queryPhoneId = String(signedCallback?.phoneId || req.query.phoneId || '').trim();
+        const queryProjectId = String(signedCallback?.projectId || req.query.projectId || '').trim();
+        const state = String(signedCallback?.state || req.query.state || '').trim();
+        const projectId = queryProjectId || state || process.env.RAILWAY_PROJECT_ID || 'default_project';
         
-        console.log(`📡 [CALLBACK] Iniciando onboard-callback para Proyecto: ${projectId}`);
-        if (!code) return res.send('<h2>❌ Error: No se recibió el código de Meta</h2>');
+        console.log(`[CALLBACK] Iniciando onboard-callback para Proyecto: ${projectId}`);
+        if (!code) return res.send('<h2>Error: No se recibio el codigo de Meta</h2>');
 
         try {
             console.log(`📡 [CALLBACK] Intercambiando código Meta por token (v22.0)...`);

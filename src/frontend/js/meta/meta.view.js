@@ -694,8 +694,9 @@ window.metaView = (() => {
                         if (statusEl) statusEl.style.display = 'none';
                         const btn = document.getElementById('meta-onboard-btn');
                         if (btn) {
-                            btn.innerHTML = '<i class="fas fa-right-to-bracket"></i> Ingresar';
-                            btn.onclick = syncAndSaveConnection;
+                            btn.disabled = false;
+                            btn.innerHTML = '<i class="fab fa-meta"></i> Vincular con META';
+                            btn.onclick = launchMetaOnboardingView;
                         }
                     }
                 }, 1000);

@@ -133,8 +133,8 @@ const resolveReplyMetadata = async (
 
     return { replyTo, replyPreview };
 };
-const BACKOFFICE_MASTER_PROJECT_ID = "backoffice-default";
-const LEGACY_MASTER_PROJECT_IDS = new Set(["defaul", "default_project"]);
+const BACKOFFICE_MASTER_PROJECT_ID = "default_project";
+const LEGACY_MASTER_PROJECT_IDS = new Set(["defaul"]);
 const PROJECT_ID = process.env.RAILWAY_PROJECT_ID || BACKOFFICE_MASTER_PROJECT_ID;
 const PROJECT_NAME = process.env.RAILWAY_SERVICE_NAME || "Neurolinks";
 
@@ -657,7 +657,7 @@ export class HistoryHandler {
                     if (columnError && columnError.code === '42703') {
                         console.log(`🔧 Actualizando tabla '${table.name}' para incluir project_id...`);
                         const alterSql = table.name === 'chats'
-                            ? `ALTER TABLE chats ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT 'backoffice-default';
+                            ? `ALTER TABLE chats ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT 'default_project';
                                DO $$ 
                                BEGIN 
                                  IF EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name='chats_pkey') THEN
@@ -665,7 +665,7 @@ export class HistoryHandler {
                                  END IF;
                                END $$;
                                ALTER TABLE chats ADD PRIMARY KEY (id, project_id);`
-                            : `ALTER TABLE messages ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT 'backoffice-default';`;
+                            : `ALTER TABLE messages ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT 'default_project';`;
 
                         const { error: alterError } = await supabase.rpc('exec_sql', { query: alterSql });
                         if (alterError) {
@@ -4792,7 +4792,7 @@ export class HistoryHandler {
 
                     let finalValue = item.defaultValue;
 
-                    // Si el valor en env es 'PENDING', intentamos buscar en el proyecto maestro 'backoffice-default'
+                    // Si el valor en env es 'PENDING', intentamos buscar en el proyecto maestro 'default_project'
                     // EXCEPTO para llaves críticas de OpenAI que deben ser únicas por proyecto
                     const sensitiveKeys = ['OPENAI_API_KEY', 'OPENAI_ADMIN_API_KEY', 'OPENAI_API_KEY_TOOLS'];
 

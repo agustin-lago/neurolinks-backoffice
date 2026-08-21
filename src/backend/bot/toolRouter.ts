@@ -21,7 +21,7 @@ export async function getActiveModule(projectId?: string | null, serviceId?: str
     return cachedModule;
   }
 
-  const cacheKey = `${projectId || 'backoffice-default'}:${serviceId || 'default_service'}`;
+  const cacheKey = `${projectId || 'default_project'}:${serviceId || 'default_service'}`;
   if (!moduleCache.has(cacheKey)) {
     moduleCache.set(cacheKey, await loadActiveClientModule(projectId, serviceId));
   }

@@ -54,7 +54,7 @@ export async function updateAllSheets(options: { forceRecreate?: boolean; projec
 
         let query = supabase.from("settings").select("project_id, service_id, value").eq("key", "SHEET_ID_UPDATE");
 
-        if (currentProjectId && !['backoffice-default', 'default_project', 'defaul', 'default', 'test-neurolinks-local', 'local-dev'].includes(currentProjectId)) {
+        if (currentProjectId && !['default_project', 'defaul', 'default', 'test-neurolinks-local', 'local-dev'].includes(currentProjectId)) {
             console.log(`📌 [GoogleSheets] Sincronizando sheets para el proyecto activo: ${currentProjectId}`);
             query = query.eq("project_id", currentProjectId);
             

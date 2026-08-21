@@ -137,7 +137,7 @@ export const initSocketIO = (serverInstance: any, { processUserMessage }: any) =
 
         io.on('connection', (socket) => {
             const query = socket.handshake.query || {};
-            const projectId = query.projectId || 'backoffice-default';
+            const projectId = query.projectId || 'default_project';
             const serviceId = query.serviceId || 'default_service';
             
             const room = `${projectId}:${serviceId}`;

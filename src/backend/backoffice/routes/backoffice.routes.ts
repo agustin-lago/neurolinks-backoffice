@@ -3788,7 +3788,7 @@ export const registerBackofficeRoutes = (app: any) => {
 
     app.get('/api/backoffice/whatsapp/onboard-callback', async (req: any, res: any) => {
         const { code, wabaId: queryWabaId, phoneId: queryPhoneId, projectId: queryProjectId, state, serviceId: queryServiceId } = req.query;
-        let projectId = (queryProjectId as string) || process.env.RAILWAY_PROJECT_ID || 'backoffice-default';
+        let projectId = (queryProjectId as string) || process.env.RAILWAY_PROJECT_ID || 'default_project';
         let serviceId = (queryServiceId as string) || resolveServiceId(req) || 'default_service';
 
         if (state && typeof state === 'string') {
@@ -4352,7 +4352,7 @@ export const registerBackofficeRoutes = (app: any) => {
         const { code } = req.body;
         if (!code) return res.status(400).json({ success: false, error: 'Code is required' });
         try {
-            const projectId = resolveProjectId(req) || process.env.RAILWAY_PROJECT_ID || 'backoffice-default';
+            const projectId = resolveProjectId(req) || process.env.RAILWAY_PROJECT_ID || 'default_project';
             const serviceId = resolveServiceId(req);
             const appId = await depsHistoryHandler.getConfig('META_APP_ID', projectId, serviceId) || process.env.META_APP_ID || '1493670789148486';
             const appSecret = await depsHistoryHandler.getConfig('META_APP_SECRET', projectId, serviceId) || process.env.META_APP_SECRET || '362b2ec20c00bdf51336fd165ad47160';

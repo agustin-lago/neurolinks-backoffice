@@ -25,7 +25,7 @@ export async function updateAllDocs(projectId?: string, serviceId?: string) {
         const currentServiceId = serviceId || process.env.SERVICE_ID || process.env.RAILWAY_SERVICE_ID || HistoryHandler.SERVICE_IDENTIFIER;
         let query = supabase.from("settings").select("project_id, service_id, value").eq("key", "DOCX_ID_UPDATE");
 
-        if (currentProjectId && !['backoffice-default', 'default_project', 'defaul', 'default', 'test-neurolinks-local', 'local-dev'].includes(currentProjectId)) {
+        if (currentProjectId && !['default_project', 'defaul', 'default', 'test-neurolinks-local', 'local-dev'].includes(currentProjectId)) {
             console.log(`📌 [GoogleDocs] Sincronizando documentos exclusivamente para el proyecto activo: ${currentProjectId}`);
             query = query.eq("project_id", currentProjectId);
             

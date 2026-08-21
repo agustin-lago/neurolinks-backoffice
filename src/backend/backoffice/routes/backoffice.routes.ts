@@ -2692,6 +2692,51 @@ export const registerBackofficeRoutes = (app: any) => {
         const dbConfig: Record<string, any> = config || {};
         const mergedConfig: Record<string, any> = { ...dbConfig };
 
+        const hasMetaValue = (
+            value: any
+        ): boolean => {
+            if (
+                value === undefined ||
+                value === null
+            ) {
+                return false;
+            }
+
+            const normalized =
+                String(value).trim();
+
+            return (
+                normalized !== '' &&
+                normalized !== 'PENDING'
+            );
+        };
+
+        const hasAccessToken =
+            hasMetaValue(
+                mergedConfig.access_token
+            );
+
+        const hasWabaId =
+            hasMetaValue(
+                mergedConfig.waba_id
+            );
+
+        const hasPhoneNumberId =
+            hasMetaValue(
+                mergedConfig.phone_number_id
+            );
+
+        const connectionState =
+            (
+                hasAccessToken &&
+                hasWabaId &&
+                hasPhoneNumberId
+            )
+                ? 'connected'
+                : hasAccessToken
+                    ? 'partial'
+                    : 'disconnected';
+
         const appId =
             getRuntimeConfigValue(
                 "META_APP_ID"
@@ -2743,6 +2788,7 @@ export const registerBackofficeRoutes = (app: any) => {
             callbackUri,
             railwayProjectId: projectId,
             serviceId: serviceId,
+            connectionState,
             config: mergedConfig
         });
     });
@@ -3881,9 +3927,43 @@ export const registerBackofficeRoutes = (app: any) => {
                 await depsHistoryHandler.saveSetting('MESSENGER_VISIBLE', 'on', projectId, serviceId);
             }
 
-            // 3. VerificaciÃ³n de resultados y depuraciÃ³n de scopes si fallÃ³ todo
-            if (!discovery.found && !pageDiscovery) {
-                console.warn('⚠️ [CALLBACK] No se pudo descubrir ningún recurso automáticamente.');
+            const isValidMetaId = (
+                value: any
+            ): boolean => {
+                if (
+                    value === undefined ||
+                    value === null
+                ) {
+                    return false;
+                }
+
+                const normalized =
+                    String(value).trim();
+
+                return (
+                    normalized !== '' &&
+                    normalized !== 'PENDING'
+                );
+            };
+
+            const hasCompleteWhatsAppIds =
+                isValidMetaId(
+                    finalWabaId
+                ) &&
+                isValidMetaId(
+                    finalPhoneId
+                );
+
+            // WhatsApp sólo puede considerarse vinculado cuando
+            // existen WABA ID y Phone Number ID válidos.
+            if (!hasCompleteWhatsAppIds) {
+                console.warn(
+                    '[CALLBACK] Meta fue autorizado pero la configuración ' +
+                    'de WhatsApp está incompleta. ' +
+                    `WABA=${finalWabaId || 'null'}, ` +
+                    `Phone=${finalPhoneId || 'null'}. ` +
+                    'Se conservará únicamente la autorización para permitir sincronización posterior.'
+                );
 
                 const diagHtml = discovery.diagnostics.map(d => `
                     <div style="margin-bottom: 15px; border-bottom: 1px solid #edf2f7; padding-bottom: 10px;">
@@ -4006,8 +4086,34 @@ export const registerBackofficeRoutes = (app: any) => {
                 `;
 
                 // Guardar solo el token para futuras referencias
-                await depsHistoryHandler.saveMetaOnboardingData(null as any, null as any, accessToken, { diagnostics: discovery.diagnostics }, projectId, serviceId);
-                return res.send(htmlError);
+                const partialSaveResult =
+                    await depsHistoryHandler
+                        .saveMetaOnboardingData(
+                            null as any,
+                            null as any,
+                            accessToken,
+                            {
+                                diagnostics:
+                                    discovery.diagnostics,
+                                pendingSync: true
+                            },
+                            projectId,
+                            serviceId
+                        );
+
+                if (
+                    !partialSaveResult?.success
+                ) {
+                    console.error(
+                        '[CALLBACK] No se pudo persistir ' +
+                        'el estado parcial de Meta:',
+                        partialSaveResult?.error
+                    );
+                }
+
+                return res.send(
+                    htmlError
+                );
             }
 
             // Registrar y suscribir WhatsApp si se encontrÃ³
@@ -4041,7 +4147,28 @@ export const registerBackofficeRoutes = (app: any) => {
                     console.warn('âš ï¸ [CALLBACK] No se pudo suscribir a smb_message_echoes:', smbErr?.response?.data || smbErr.message);
                 }
 
-                await depsHistoryHandler.saveMetaOnboardingData(finalWabaId, finalPhoneId, tokenToUse, { verified_name: finalVerifiedName }, projectId, serviceId);
+                const saveResult =
+                    await depsHistoryHandler
+                        .saveMetaOnboardingData(
+                            finalWabaId,
+                            finalPhoneId,
+                            tokenToUse,
+                            {
+                                verified_name:
+                                    finalVerifiedName
+                            },
+                            projectId,
+                            serviceId
+                        );
+
+                if (
+                    !saveResult?.success
+                ) {
+                    throw new Error(
+                        saveResult?.error ||
+                        'No se pudo persistir la configuración de Meta.'
+                    );
+                }
 
                 // --- SINCRONIZACIÃ“N AUTOMÃTICA SMB ---
                 // Solicitamos contactos e historial inmediatamente tras la vinculaciÃ³n
@@ -4409,8 +4536,8 @@ export const registerBackofficeRoutes = (app: any) => {
             });
             const data = response.data;
             const result = await depsHistoryHandler.saveMetaOnboardingData(
-                data.phoneNumberId || data.phone_number_id || "PENDING",
                 data.wabaId || data.waba_id || "PENDING",
+                data.phoneNumberId || data.phone_number_id || "PENDING",
                 data.accessToken || data.access_token,
                 { ...data, syncedBy: 'neurolinks-master-router' },
                 projectId,

@@ -4670,7 +4670,7 @@ export class HistoryHandler {
     private static async bootstrapConfig() {
         try {
             const currentProjectId = this.PROJECT_IDENTIFIER;
-            const MASTER_ID = BACKOFFICE_MASTER_PROJECT_ID;
+            const MASTER_ID = "defaul";
             console.log(`[Bootstrap] 🚀 Iniciando Bootstrap para: ${currentProjectId}`);
 
             if (currentProjectId === MASTER_ID || LEGACY_MASTER_PROJECT_IDS.has(currentProjectId)) {
@@ -4792,7 +4792,7 @@ export class HistoryHandler {
 
                     let finalValue = item.defaultValue;
 
-                    // Si el valor en env es 'PENDING', intentamos buscar en el proyecto maestro 'default_project'
+                    // Si el valor en env es 'PENDING', intentamos buscar en el proyecto maestro 'defaul'
                     // EXCEPTO para llaves críticas de OpenAI que deben ser únicas por proyecto
                     const sensitiveKeys = ['OPENAI_API_KEY', 'OPENAI_ADMIN_API_KEY', 'OPENAI_API_KEY_TOOLS'];
 

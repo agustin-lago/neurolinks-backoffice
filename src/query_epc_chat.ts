@@ -1,7 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
-import { vault } from "./backend/db/vault";
+import {
+    requireRuntimeConfigValue
+} from "./backend/config/runtimeConfig";
 
-const supabase = createClient(vault.supabaseUrl, vault.supabaseKey);
+const supabase = createClient(
+    requireRuntimeConfigValue(
+        "SUPABASE_URL"
+    ),
+    requireRuntimeConfigValue(
+        "SUPABASE_KEY"
+    )
+);
 
 async function main() {
     const projectId = "d66785f9-aa8d-463e-9646-d9f384df3f7b";

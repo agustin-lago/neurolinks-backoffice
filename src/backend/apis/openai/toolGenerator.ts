@@ -6,7 +6,9 @@ import {
     getOpenAIBaseUrl,
     getOpenAIProxyHeaders
 } from "./openaiHelper";
-import { vault } from "../../db/vault";
+import {
+    requireRuntimeConfigValue
+} from "../../config/runtimeConfig";
 
 /**
  * Genera automáticamente la definición de herramientas (Tools) y actualiza la configuración del bot
@@ -21,8 +23,15 @@ export async function autoUpdateBotAbilities(tableNames: string[], projectId: st
     }
 
     try {
-        const supabaseUrl = process.env.SUPABASE_URL || vault.supabaseUrl;
-        const supabaseKey = process.env.SUPABASE_KEY || vault.supabaseKey;
+        const supabaseUrl =
+            requireRuntimeConfigValue(
+                "SUPABASE_URL"
+            );
+
+        const supabaseKey =
+            requireRuntimeConfigValue(
+                "SUPABASE_KEY"
+            );
         
         // Intentar obtener la clave específica para el generador, fallback a la principal (filtrando por proyecto/servicio)
         const openaiKey = await HistoryHandler.getConfig('OPENAI_API_KEY_TOOLS', projectId, serviceId) 

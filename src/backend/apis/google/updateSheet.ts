@@ -6,14 +6,23 @@ import OpenAI from "openai";
 import * as glob from "glob";
 import { createClient } from "@supabase/supabase-js";
 
-import { vault } from "../../db/vault";
 import { autoUpdateBotAbilities } from "../openai/toolGenerator";
 import { HistoryHandler } from "../../db/historyHandler.js";
+import {
+    requireRuntimeConfigValue
+} from "../../config/runtimeConfig";
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL || vault.supabaseUrl;
-const supabaseKey = process.env.SUPABASE_KEY || vault.supabaseKey;
+const supabaseUrl =
+    requireRuntimeConfigValue(
+        "SUPABASE_URL"
+    );
+
+const supabaseKey =
+    requireRuntimeConfigValue(
+        "SUPABASE_KEY"
+    );
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 let currentFileId: string | null = null;

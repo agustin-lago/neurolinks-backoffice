@@ -1,10 +1,19 @@
 import { createClient } from "@supabase/supabase-js";
 import readline from "readline";
-import { vault } from "../db/vault";
+import {
+    requireRuntimeConfigValue
+} from "../config/runtimeConfig";
 
 // Inicializar cliente de Supabase
-const supabaseUrl = process.env.SUPABASE_URL || vault.supabaseUrl;
-const supabaseKey = process.env.SUPABASE_KEY || vault.supabaseKey;
+const supabaseUrl =
+    requireRuntimeConfigValue(
+        "SUPABASE_URL"
+    );
+
+const supabaseKey =
+    requireRuntimeConfigValue(
+        "SUPABASE_KEY"
+    );
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Capturar argumentos de la línea de comandos

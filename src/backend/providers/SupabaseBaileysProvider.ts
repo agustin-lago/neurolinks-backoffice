@@ -11,6 +11,9 @@ import {
 import pino from 'pino';
 import path from 'path';
 import fs from 'fs';
+import {
+    requireRuntimeConfigValue
+} from '../config/runtimeConfig';
 
 const logger = pino({ level: 'error' });
 
@@ -250,10 +253,16 @@ export class SupabaseBaileysProvider extends BaileysProvider {
             }
 
             const { useSupabaseAuthState } = await import('../db/supabaseAdapter');
-            const { vault } = await import('../db/vault');
             
-            const supabaseUrl = process.env.SUPABASE_URL || vault.supabaseUrl;
-            const supabaseKey = process.env.SUPABASE_KEY || vault.supabaseKey;
+            const supabaseUrl =
+                requireRuntimeConfigValue(
+                    "SUPABASE_URL"
+                );
+
+            const supabaseKey =
+                requireRuntimeConfigValue(
+                    "SUPABASE_KEY"
+                );
             const projectId = process.env.RAILWAY_PROJECT_ID || 'local-dev';
             const botName = this.globalVendorArgs.name || 'default';
 

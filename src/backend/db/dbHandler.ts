@@ -1,13 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { updateAllSheets } from "../apis/google/updateSheet";
-
-import { vault } from "./vault";
+import {
+    requireRuntimeConfigValue
+} from "../config/runtimeConfig";
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL || vault.supabaseUrl;
-const supabaseKey = process.env.SUPABASE_KEY || vault.supabaseKey;
+const supabaseUrl =
+    requireRuntimeConfigValue(
+        "SUPABASE_URL"
+    );
+
+const supabaseKey =
+    requireRuntimeConfigValue(
+        "SUPABASE_KEY"
+    );
 
 const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 

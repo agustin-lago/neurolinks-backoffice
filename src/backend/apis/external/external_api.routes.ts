@@ -3,6 +3,9 @@ import { randomBytes } from 'crypto';
 import bodyParser from 'body-parser';
 import axios from 'axios';
 import { HistoryHandler, supabase } from "../../db/historyHandler";
+import {
+    getRuntimeConfigValue
+} from "../../config/runtimeConfig";
 
 interface MetaConnectSession {
     sessionToken: string;
@@ -565,17 +568,20 @@ export const registerExternalApiRoutes = (app: any, deps: any) => {
             const projectId = auth.projectId;
             const serviceId = auth.serviceId || 'default_service';
 
-            const appId = await HistoryHandler.getSetting('META_APP_ID', projectId, serviceId)
-                || await HistoryHandler.getConfig('META_APP_ID', projectId, serviceId)
-                || process.env.META_APP_ID;
+            const appId =
+                getRuntimeConfigValue(
+                    "META_APP_ID"
+                );
 
-            const appSecret = await HistoryHandler.getSetting('META_APP_SECRET', projectId, serviceId)
-                || await HistoryHandler.getConfig('META_APP_SECRET', projectId, serviceId)
-                || process.env.META_APP_SECRET;
+            const appSecret =
+                getRuntimeConfigValue(
+                    "META_APP_SECRET"
+                );
 
-            const configId = await HistoryHandler.getSetting('META_CONFIG_ID', projectId, serviceId)
-                || await HistoryHandler.getConfig('META_CONFIG_ID', projectId, serviceId)
-                || process.env.META_CONFIG_ID;
+            const configId =
+                getRuntimeConfigValue(
+                    "META_CONFIG_ID"
+                );
 
             if (!appId || !appSecret) {
                 return res.status(400).json({

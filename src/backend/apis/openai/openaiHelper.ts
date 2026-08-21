@@ -3,6 +3,9 @@ import { getArgentinaDatetimeString } from "../../utils/ArgentinaTime";
 import { executeDbQuery } from "../../db/dbHandler";
 import { SystemLogger } from "../../utils/logger.js";
 import { RagToolManager } from "../../rag/ragToolManager.js";
+import {
+    getRuntimeConfigValue
+} from "../../config/runtimeConfig";
 
 // Instancias perezosas para Hot-update con cache multi-tenant.
 const _openaiMap =
@@ -40,9 +43,9 @@ export function getOpenAIProxyHeaders(
     }
 
     const token =
-        process.env
-            .NEUROLINKS_PROXY_AUTH_TOKEN
-            ?.trim();
+        getRuntimeConfigValue(
+            "NEUROLINKS_PROXY_AUTH_TOKEN"
+        );
 
     if (!token) {
         return undefined;
@@ -59,8 +62,9 @@ export function getOpenAIBaseUrl():
     string | undefined {
 
     const envBaseURL =
-        process.env
-            .NEUROLINKS_OPENAI_BASE_URL;
+        getRuntimeConfigValue(
+            "NEUROLINKS_OPENAI_BASE_URL"
+        );
 
 
     // Proxy propio del backoffice nuevo.
@@ -129,10 +133,8 @@ export async function getOpenAI(
 
 
     const key =
-        await HistoryHandler.getConfig(
-            'OPENAI_API_KEY',
-            targetProjectId,
-            targetServiceId
+        getRuntimeConfigValue(
+            "OPENAI_API_KEY"
         );
 
 
@@ -244,10 +246,8 @@ export async function getOpenAIVision(
 
 
     const key =
-        await HistoryHandler.getConfig(
-            'OPENAI_API_KEY_IMG',
-            targetProjectId,
-            targetServiceId
+        getRuntimeConfigValue(
+            "OPENAI_API_KEY_IMG"
         );
 
 

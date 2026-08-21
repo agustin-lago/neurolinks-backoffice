@@ -17,6 +17,10 @@ import { upload } from "../../middleware/upload";
 import { getIdsByHost } from '../utils/routingResolver';
 import { ContactService } from "../../contacts/contactService";
 import { getVisibleServiceIds } from '../utils/databaseSync';
+import {
+    getRuntimeConfigValue,
+    requireRuntimeConfigValue
+} from "../../config/runtimeConfig";
 
 // Invalidar visibility cache cuando cambia cualquier setting de visibilidad via Realtime
 const VISIBILITY_KEYS = ['WHATSAPP_VISIBLE', 'INSTAGRAM_VISIBLE', 'MESSENGER_VISIBLE', 'CRM_VISIBLE'];
@@ -2687,19 +2691,27 @@ export const registerBackofficeRoutes = (app: any) => {
         // Merge: DB tiene prioridad, pero "PENDING" se considera ausente
         const dbConfig: Record<string, any> = config || {};
         const mergedConfig: Record<string, any> = { ...dbConfig };
-        const isAbsent = (v: any) => !v || v === 'PENDING';
-        if (isAbsent(mergedConfig.waba_id)        && process.env.META_WABA_ID)      mergedConfig.waba_id        = process.env.META_WABA_ID;
-        if (isAbsent(mergedConfig.phone_number_id) && process.env.META_PHONE_ID)     mergedConfig.phone_number_id = process.env.META_PHONE_ID;
-        if (isAbsent(mergedConfig.access_token)   && process.env.META_ACCESS_TOKEN) mergedConfig.access_token   = process.env.META_ACCESS_TOKEN;
 
-        const dbAppId = await depsHistoryHandler.getConfig('META_APP_ID', projectId, serviceId);
-        const dbConfigId = await depsHistoryHandler.getConfig('META_CONFIG_ID', projectId, serviceId);
-        const dbMetaAuthUrl = await depsHistoryHandler.getConfig('META_AUTH_URL', projectId, serviceId);
-        const dbMetaAuthSecret = await depsHistoryHandler.getConfig('META_AUTH_SHARED_SECRET', projectId, serviceId);
-        const appId = dbAppId || process.env.META_APP_ID;
-        const configId = dbConfigId || process.env.META_CONFIG_ID;
-        const metaAuthUrl = dbMetaAuthUrl || process.env.META_AUTH_URL || META_AUTH_URL_FALLBACK;
-        const metaAuthSecret = dbMetaAuthSecret || process.env.META_AUTH_SHARED_SECRET;
+        const appId =
+            getRuntimeConfigValue(
+                "META_APP_ID"
+            );
+
+        const configId =
+            getRuntimeConfigValue(
+                "META_CONFIG_ID"
+            );
+
+        const metaAuthUrl =
+            getRuntimeConfigValue(
+                "META_AUTH_URL"
+            ) ||
+            META_AUTH_URL_FALLBACK;
+
+        const metaAuthSecret =
+            getRuntimeConfigValue(
+                "META_AUTH_SHARED_SECRET"
+            );
         const requestBaseUrl = getRequestBaseUrl(req);
         const callbackUri = `${requestBaseUrl}/api/backoffice/whatsapp/onboard-callback?serviceId=${encodeURIComponent(serviceId || '')}`;
         const metaAuthState = `${projectId}:${serviceId}`;
@@ -2798,8 +2810,15 @@ export const registerBackofficeRoutes = (app: any) => {
             if (!finalWabaId || !finalPhoneId) {
                 const { discoverMetaIds } = await import("../../apis/meta/metaDiscovery");
                 console.log(`¡ [META-SYNC-MANUAL] Iniciando descubrimiento manual por falta de IDs...`);
-                const appId = await depsHistoryHandler.getConfig('META_APP_ID', projectId, serviceId) || process.env.META_APP_ID || '1493670789148486';
-                const appSecret = await depsHistoryHandler.getConfig('META_APP_SECRET', projectId, serviceId) || process.env.META_APP_SECRET || '362b2ec20c00bdf51336fd165ad47160';
+                const appId =
+                    requireRuntimeConfigValue(
+                        "META_APP_ID"
+                    );
+
+                const appSecret =
+                    requireRuntimeConfigValue(
+                        "META_APP_SECRET"
+                    );
                 const discovery = await discoverMetaIds(manualToken, null, appId, appSecret);
                 if (!discovery.found || !discovery.data?.phoneNumberId) {
                     return res.status(404).json({ success: false, error: 'No se pudieron encontrar los datos automáticamente. Por favor ingresa los IDs manualmente.' });
@@ -2841,7 +2860,10 @@ export const registerBackofficeRoutes = (app: any) => {
                 adapterProvider.updateConfig({
                     jwtToken: token,
                     numberId: phoneId,
-                    verifyToken: process.env.META_VERIFY_TOKEN,
+                    verifyToken:
+                        getRuntimeConfigValue(
+                            "META_VERIFY_TOKEN"
+                        ) || "",
                     businessId: wabaId,
                     // Compatibilidad con versiones antiguas del provider:
                     access_token: token,
@@ -3807,8 +3829,15 @@ export const registerBackofficeRoutes = (app: any) => {
         try {
             console.log(`ðŸ“¡ [CALLBACK] Intercambiando cÃ³digo Meta por token (v25.0)...`);
 
-            const appId = await depsHistoryHandler.getConfig('META_APP_ID', projectId, serviceId) || process.env.META_APP_ID || '1493670789148486';
-            const appSecret = await depsHistoryHandler.getConfig('META_APP_SECRET', projectId, serviceId) || process.env.META_APP_SECRET || '362b2ec20c00bdf51336fd165ad47160';
+            const appId =
+                requireRuntimeConfigValue(
+                    "META_APP_ID"
+                );
+
+            const appSecret =
+                requireRuntimeConfigValue(
+                    "META_APP_SECRET"
+                );
 
             if (!appId || !appSecret) {
                 throw new Error("Faltan META_APP_ID o META_APP_SECRET en el servidor.");
@@ -4223,8 +4252,15 @@ export const registerBackofficeRoutes = (app: any) => {
             console.log(`ðŸ” [SYNC-IDS] IDs faltantes. Iniciando discovery con token guardado...`);
             const { discoverMetaIds } = await import('../../apis/meta/metaDiscovery');
             const mainToken = await depsHistoryHandler.getMainToken();
-            const appId = await depsHistoryHandler.getConfig('META_APP_ID', projectId, serviceId) || process.env.META_APP_ID || '1493670789148486';
-            const appSecret = await depsHistoryHandler.getConfig('META_APP_SECRET', projectId, serviceId) || process.env.META_APP_SECRET || '362b2ec20c00bdf51336fd165ad47160';
+            const appId =
+                requireRuntimeConfigValue(
+                    "META_APP_ID"
+                );
+
+            const appSecret =
+                requireRuntimeConfigValue(
+                    "META_APP_SECRET"
+                );
             const discovery = await discoverMetaIds(config.access_token, mainToken, appId, appSecret);
 
             if (!discovery.found || !discovery.data?.wabaId || !discovery.data?.phoneNumberId) {
@@ -4354,8 +4390,15 @@ export const registerBackofficeRoutes = (app: any) => {
         try {
             const projectId = resolveProjectId(req) || process.env.RAILWAY_PROJECT_ID || 'default_project';
             const serviceId = resolveServiceId(req);
-            const appId = await depsHistoryHandler.getConfig('META_APP_ID', projectId, serviceId) || process.env.META_APP_ID || '1493670789148486';
-            const appSecret = await depsHistoryHandler.getConfig('META_APP_SECRET', projectId, serviceId) || process.env.META_APP_SECRET || '362b2ec20c00bdf51336fd165ad47160';
+            const appId =
+                requireRuntimeConfigValue(
+                    "META_APP_ID"
+                );
+
+            const appSecret =
+                requireRuntimeConfigValue(
+                    "META_APP_SECRET"
+                );
 
             const response = await axios.post('https://ygyicozjewxbyixtpjlo.supabase.co/functions/v1/whatsapp-router/register', {
                 meta_code: code,

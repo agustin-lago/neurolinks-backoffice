@@ -4,7 +4,12 @@ import { EventEmitter } from "events";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
-import { vault } from "./vault";
+import {
+    GLOBAL_RUNTIME_KEYS,
+    getRuntimeConfigValue,
+    isGlobalRuntimeKey,
+    requireRuntimeConfigValue
+} from "../config/runtimeConfig";
 import { LocalHistoryStore } from "./localHistoryStore";
 
 dotenv.config();
@@ -27,9 +32,17 @@ const sanitizeJsonPayload = (payload: any): any => {
     }
 };
 
-const supabaseUrl = process.env.SUPABASE_URL || vault.supabaseUrl;
-const supabaseKey = process.env.SUPABASE_KEY || vault.supabaseKey;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl =
+    requireRuntimeConfigValue("SUPABASE_URL");
+
+const supabaseKey =
+    requireRuntimeConfigValue("SUPABASE_KEY");
+
+const supabase =
+    createClient(
+        supabaseUrl,
+        supabaseKey
+    );
 export { supabase };
 
 // Emitter para notificar cambios en tiempo real a otros módulos (como el de WebSockets)
@@ -281,7 +294,7 @@ export class HistoryHandler {
     static readonly EDITABLE_KEYS = [
         'ASSISTANT_NAME', 'ASSISTANT_ID', 'ASSISTANT_2', 'ASSISTANT_3', 'ASSISTANT_4', 'ASSISTANT_5',
         'ASSISTANT_PROMPT', 'ASSISTANT_PROMPT_2', 'ASSISTANT_PROMPT_3', 'ASSISTANT_PROMPT_4', 'ASSISTANT_PROMPT_5',
-        'OPENAI_API_KEY', 'OPENAI_ADMIN_API_KEY', 'ASSISTANT_ID_IMG', 'OPENAI_API_KEY_IMG', 'VECTOR_STORE_ID', 'EXTRA_SYSTEM_PROMPT',
+        'ASSISTANT_ID_IMG', 'VECTOR_STORE_ID', 'EXTRA_SYSTEM_PROMPT',
         'DB_TABLES', 'OPENAI_TOOLS_DEFINITION', 'msjCierre', 'msjSeguimiento1', 'msjSeguimiento2', 'msjSeguimiento3',
         'timeOutCierre', 'timeOutSeguimiento2', 'timeOutSeguimiento3', 'ID_GRUPO_RESUMEN', 'ID_GRUPO_RESUMEN_2',
         'SHEET_ID_RESUMEN', 'SHEET_ID_UPDATE', 'DOCX_ID_UPDATE', 'GOOGLE_CALENDAR_ID',
@@ -292,9 +305,7 @@ export class HistoryHandler {
     ];
 
     static readonly FIXED_KEYS = [
-        'SUPABASE_URL', 'SUPABASE_KEY', 'RAILWAY_TOKEN', 'BACKOFFICE_TOKEN',
-        'GOOGLE_PRIVATE_KEY', 'GOOGLE_CLIENT_EMAIL', 'GOOGLE_MAPS_API_KEY',
-        'META_CONFIG_ID', 'META_APP_ID', 'META_APP_SECRET'
+        ...GLOBAL_RUNTIME_KEYS
     ];
 
     static async initDatabase() {
@@ -4613,6 +4624,10 @@ export class HistoryHandler {
                 console.log(`📡 [HistoryHandler] Asignando automáticamente ${defaultSettings.length} settings de 'default_service' -> '${currentServiceId}' (Proyecto: ${currentProjectId})...`);
 
                 for (const setting of defaultSettings) {
+                    if (isGlobalRuntimeKey(setting.key)) {
+                        continue;
+                    }
+
                     await supabase
                         .from('settings')
                         .update({ service_id: currentServiceId, updated_at: new Date().toISOString() })
@@ -4646,6 +4661,9 @@ export class HistoryHandler {
             }, (payload: any) => {
                 if (payload.new?.project_id !== projectId && payload.old?.project_id !== projectId) return;
                 const key = payload.new?.key || payload.old?.key;
+                if (key && isGlobalRuntimeKey(key)) {
+                    return;
+                }
                 const value = payload.new?.value;
                 const serviceId = payload.new?.service_id || payload.old?.service_id;
                 if (!key) return;
@@ -4796,6 +4814,12 @@ export class HistoryHandler {
 
     static async saveSetting(key: string, value: string, projectId: string | null = null, serviceId: string | null = null) {
         if (!supabase) return;
+
+        if (isGlobalRuntimeKey(key)) {
+            throw new Error(
+                `[RuntimeConfig] '${key}' es una variable global del runtime y no puede guardarse en public.settings.`
+            );
+        }
         const targetProjectId = projectId || HistoryHandler.PROJECT_IDENTIFIER;
         const targetServiceId = serviceId || process.env.SERVICE_ID || process.env.RAILWAY_SERVICE_ID || HistoryHandler.SERVICE_IDENTIFIER;
 
@@ -4900,6 +4924,10 @@ export class HistoryHandler {
 
     static async getSetting(key: string, projectId: string | null = null, serviceId: string | null = null, strictService: boolean = false): Promise<string | null> {
         if (!supabase) return null;
+
+        if (isGlobalRuntimeKey(key)) {
+            return null;
+        }
         const targetProjectId = projectId || HistoryHandler.PROJECT_IDENTIFIER;
         const rawServiceId = serviceId || process.env.SERVICE_ID || process.env.RAILWAY_SERVICE_ID || HistoryHandler.SERVICE_IDENTIFIER;
 
@@ -5036,18 +5064,41 @@ export class HistoryHandler {
      * Helper de configuración dinámica (Hot-update).
      * Busca primero en la base de datos (settings) y si no existe, recurre a process.env.
      */
-    static async getConfig(key: string, projectId: string | null = null, serviceId: string | null = null): Promise<string | null> {
-        const dbValue = await this.getSetting(key, projectId, serviceId);
-        if (dbValue !== null && dbValue !== undefined && dbValue !== '') {
+    static async getConfig(
+        key: string,
+        projectId: string | null = null,
+        serviceId: string | null = null
+    ): Promise<string | null> {
+
+        // Las variables globales pertenecen exclusivamente al runtime.
+        // Nunca consultar Supabase para ellas.
+        if (isGlobalRuntimeKey(key)) {
+            return getRuntimeConfigValue(key);
+        }
+
+        const dbValue =
+            await this.getSetting(
+                key,
+                projectId,
+                serviceId
+            );
+
+        if (
+            dbValue !== null &&
+            dbValue !== undefined &&
+            dbValue !== ""
+        ) {
             return dbValue;
         }
 
-        // Si no está en DB, lo tomamos de Railway (env)
-        const envValue = process.env[key] || null;
-
-        // Si lo encontramos en Railway pero no estaba en DB, lo retornamos pero NO lo persistimos automáticamente
-        // para evitar sobreescrituras accidentales de la configuración base.
-        return envValue;
+        // COMPATIBILIDAD TEMPORAL:
+        //
+        // Durante esta primera fase todavía permitimos fallback ENV para
+        // keys tenant legacy que aún puedan tener consumidores antiguos.
+        //
+        // Este fallback se eliminará en el siguiente commit una vez
+        // auditados todos los consumidores directos de process.env.
+        return process.env[key] || null;
     }
 
     /**
@@ -5128,16 +5179,20 @@ export class HistoryHandler {
             if (masterSettings && masterSettings.length > 0) {
                 // Lista de llaves que NUNCA deben clonarse automáticamente desde el maestro
                 const protectedKeys = [
-                    'OPENAI_API_KEY',
-                    'OPENAI_ADMIN_API_KEY',
-                    'OPENAI_API_KEY_TOOLS',
                     'ADMIN_USER',
                     'ADMIN_PASS'
                 ];
 
                 const settingsToInsert = masterSettings
-                    .filter(s => !protectedKeys.includes(s.key)) // Protección extra para llaves sensibles
-                    .filter(s => !currentKeys.has(s.key)) // Solo las que no existen en el proyecto actual
+                    .filter(
+                        s =>
+                            !isGlobalRuntimeKey(s.key) &&
+                            !protectedKeys.includes(s.key)
+                    )
+                    .filter(
+                        s =>
+                            !currentKeys.has(s.key)
+                    )
                     .map(s => {
                         const payload: any = {
                             project_id: currentProjectId,
@@ -5195,16 +5250,26 @@ export class HistoryHandler {
 
             // 4. Asegurar existencia de variables obligatorias (priorizando ENV > DB_MASTER)
             const mandatoryKeys = [
-                { key: 'OPENAI_API_KEY', defaultValue: process.env.OPENAI_API_KEY || 'PENDING' },
-                { key: 'OPENAI_ADMIN_API_KEY', defaultValue: process.env.OPENAI_ADMIN_API_KEY || 'PENDING' },
-                { key: 'OPENAI_API_KEY_TOOLS', defaultValue: process.env.OPENAI_API_KEY_TOOLS || 'PENDING' },
-                { key: 'ASSISTANT_NAME', defaultValue: process.env.ASSISTANT_NAME || 'Bot' },
-                { key: 'SHEET_ID_UPDATE', defaultValue: 'PENDING' },
-                { key: 'DOCX_ID_UPDATE', defaultValue: 'PENDING' },
-                { key: 'GOOGLE_PRIVATE_KEY', defaultValue: 'PENDING' },
-                { key: 'GOOGLE_CLIENT_EMAIL', defaultValue: 'PENDING' },
-                { key: 'SHEET_ID_RESUMEN', defaultValue: 'PENDING' },
-                { key: 'SHEET_RESUMEN_RANGE', defaultValue: 'Hoja1!A1' }
+                {
+                    key: 'ASSISTANT_NAME',
+                    defaultValue: 'Bot'
+                },
+                {
+                    key: 'SHEET_ID_UPDATE',
+                    defaultValue: 'PENDING'
+                },
+                {
+                    key: 'DOCX_ID_UPDATE',
+                    defaultValue: 'PENDING'
+                },
+                {
+                    key: 'SHEET_ID_RESUMEN',
+                    defaultValue: 'PENDING'
+                },
+                {
+                    key: 'SHEET_RESUMEN_RANGE',
+                    defaultValue: 'Hoja1!A1'
+                }
             ];
 
 
@@ -5223,10 +5288,7 @@ export class HistoryHandler {
                     let finalValue = item.defaultValue;
 
                     // Si el valor en env es 'PENDING', intentamos buscar en el proyecto maestro 'defaul'
-                    // EXCEPTO para llaves críticas de OpenAI que deben ser únicas por proyecto
-                    const sensitiveKeys = ['OPENAI_API_KEY', 'OPENAI_ADMIN_API_KEY', 'OPENAI_API_KEY_TOOLS'];
-
-                    if (finalValue === 'PENDING' && !sensitiveKeys.includes(item.key)) {
+                    if (finalValue === 'PENDING') {
                         const { data: masterVal } = await supabase
                             .from('settings')
                             .select('value')
@@ -5305,6 +5367,10 @@ export class HistoryHandler {
 
                 let count = 0;
                 Object.values(selectedSettings).forEach(setting => {
+                    if (isGlobalRuntimeKey(setting.key)) {
+                        return;
+                    }
+
                     if (setting.value && setting.value !== 'PENDING') {
                         const isFixed = HistoryHandler.FIXED_KEYS.includes(setting.key);
                         const envVal = process.env[setting.key];

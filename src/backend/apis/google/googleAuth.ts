@@ -2,19 +2,33 @@ import { google } from "googleapis";
 import { DefaultTransporter } from "google-auth-library";
 import type { GaxiosOptions, GaxiosPromise } from "gaxios";
 import "dotenv/config";
+import {
+    getRuntimeConfigValue
+} from "../../config/runtimeConfig";
 
 const getGoogleProxyUrl = (): string | null => {
-    const envGoogleProxy = process.env.GOOGLE_PROXY_URL?.trim();
+    const envGoogleProxy =
+        getRuntimeConfigValue(
+            "GOOGLE_PROXY_URL"
+        );
 
     if (envGoogleProxy === 'direct') {
         return null;
     }
 
-    return envGoogleProxy || "https://google-proxy.clientesneurolinks.com";
+    return (
+        envGoogleProxy ||
+        "https://google-proxy.clientesneurolinks.com"
+    );
 };
 
 const getProxyAuthToken = (): string | undefined => {
-    return process.env.PROXY_AUTH_TOKEN?.trim() || undefined;
+    return (
+        getRuntimeConfigValue(
+            "NEUROLINKS_PROXY_AUTH_TOKEN"
+        ) ||
+        undefined
+    );
 };
 
 const originalRequest = DefaultTransporter.prototype.request;
@@ -61,7 +75,10 @@ DefaultTransporter.prototype.request = function <T>(opts: GaxiosOptions): Gaxios
  * Maneja comillas circundantes y saltos de línea escapados.
  */
 export const getGooglePrivateKey = (): string => {
-    let rawKey = process.env.GOOGLE_PRIVATE_KEY || "";
+    let rawKey =
+        getRuntimeConfigValue(
+            "GOOGLE_PRIVATE_KEY"
+        ) || "";
     
     // 1. Quitar comillas si el string viene envuelto en ellas (común en Railway/Docker/.env)
     if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
@@ -78,7 +95,10 @@ export const getGooglePrivateKey = (): string => {
  */
 export const getGoogleCredentials = () => {
     return {
-        client_email: process.env.GOOGLE_CLIENT_EMAIL,
+        client_email:
+            getRuntimeConfigValue(
+                "GOOGLE_CLIENT_EMAIL"
+            ),
         private_key: getGooglePrivateKey(),
     };
 };

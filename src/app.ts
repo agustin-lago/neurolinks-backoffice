@@ -11,6 +11,9 @@ import { isSessionInDb, deleteAllProjectSessionsFromDb } from "./backend/provide
 import { ErrorReporter } from "./backend/bot/errorReporter";
 import { updateMain } from "./backend/apis/google/updateMain";
 import { HistoryHandler, historyEvents } from "./backend/db/historyHandler";
+import {
+    getRuntimeConfigValue
+} from "./backend/config/runtimeConfig";
 import { registerProcessCallback, handleQueue, userQueues, userLocks } from "./backend/bot/queueManager";
 import { registerBackofficeRoutes, processSendMessage, processBulkTemplate, processImportExcel } from "./backend/backoffice/routes/backoffice.routes";
 import { registerDashboardRoutes } from "./backend/backoffice/routes/dashboard.routes";
@@ -129,18 +132,44 @@ const main = async () => {
     // 2. Initialize Providers
     const metaConfig = await HistoryHandler.getMetaOnboardingData();
     
-    // Fallback: Si no hay config en DB o falta el token, intentamos usar variables de entorno
-    const metaToken = (metaConfig?.access_token && metaConfig.access_token !== "PENDING") ? metaConfig.access_token : process.env.META_ACCESS_TOKEN;
-    let metaPhoneId = (metaConfig?.phone_number_id && metaConfig.phone_number_id !== "PENDING") ? metaConfig.phone_number_id : process.env.META_PHONE_ID;
-    let metaWabaId = (metaConfig?.waba_id && metaConfig.waba_id !== "PENDING") ? metaConfig.waba_id : process.env.META_WABA_ID;
+    const metaToken =
+        (
+            metaConfig?.access_token &&
+            metaConfig.access_token !== "PENDING"
+        )
+            ? metaConfig.access_token
+            : undefined;
+
+    let metaPhoneId =
+        (
+            metaConfig?.phone_number_id &&
+            metaConfig.phone_number_id !== "PENDING"
+        )
+            ? metaConfig.phone_number_id
+            : undefined;
+
+    let metaWabaId =
+        (
+            metaConfig?.waba_id &&
+            metaConfig.waba_id !== "PENDING"
+        )
+            ? metaConfig.waba_id
+            : undefined;
 
     // --- AUTO-DESCUBRIMIENTO DE META ---
     if (metaToken && (!metaPhoneId || metaPhoneId === 'PENDING' || !metaWabaId || metaWabaId === 'PENDING')) {
         console.log('📡 [App] Detectada configuración de Meta parcial. Iniciando recuperación automática de IDs...');
         try {
             const mainToken = await HistoryHandler.getMainToken();
-            const appId = await HistoryHandler.getConfig('META_APP_ID');
-            const appSecret = await HistoryHandler.getConfig('META_APP_SECRET');
+            const appId =
+                getRuntimeConfigValue(
+                    "META_APP_ID"
+                );
+
+            const appSecret =
+                getRuntimeConfigValue(
+                    "META_APP_SECRET"
+                );
             const discovery = await discoverMetaIds(metaToken, mainToken, appId, appSecret);
             if (discovery && discovery.data?.phoneNumberId && discovery.data?.wabaId) {
                 console.log(`✅ [App] Recuperación exitosa: PhoneID=${discovery.data.phoneNumberId}, WABAID=${discovery.data.wabaId}`);
@@ -162,7 +191,10 @@ const main = async () => {
             waba_id: metaWabaId || "PENDING",
             phone_number_id: metaPhoneId,
             access_token: metaToken,
-            verify_token: process.env.META_VERIFY_TOKEN || "NeurolinksVerifyToken2026"
+            verify_token:
+                getRuntimeConfigValue(
+                    "META_VERIFY_TOKEN"
+                ) || ""
         });
         
         // --- CONFIGURACIÓN DE GRUPOS (AUXILIAR) ---
@@ -382,7 +414,10 @@ const main = async () => {
                         adapterProvider.updateConfig({
                             access_token: metaOnboarding.whatsappToken,
                             phone_number_id: metaOnboarding.whatsappNumberId,
-                            verify_token: process.env.META_VERIFY_TOKEN,
+                            verify_token:
+                                getRuntimeConfigValue(
+                                    "META_VERIFY_TOKEN"
+                                ) || "",
                             waba_id: metaOnboarding.whatsappBusinessId
                         });
                     }

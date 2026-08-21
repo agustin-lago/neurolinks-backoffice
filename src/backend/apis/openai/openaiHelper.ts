@@ -1,4 +1,4 @@
-﻿import OpenAI from "openai";
+import OpenAI from "openai";
 import { getArgentinaDatetimeString } from "../../utils/ArgentinaTime";
 import { executeDbQuery } from "../../db/dbHandler";
 import { SystemLogger } from "../../utils/logger.js";
@@ -320,7 +320,7 @@ export async function getOpenAIVision(
 }
 
 /**
- * Limpia y parsea un string JSON que puede venir envuelto en comillas literales (comÃºn en variables de entorno).
+ * Limpia y parsea un string JSON que puede venir envuelto en comillas literales (común en variables de entorno).
  */
 function safeParseJson(jsonStr: string | undefined): any {
     if (!jsonStr) return null;
@@ -347,37 +347,37 @@ export async function syncAssistantTools(assistantId: string, projectId: string 
         let toolsJson = await HistoryHandler.getSetting('OPENAI_TOOLS_DEFINITION', targetProjectId, targetServiceId);
 
         if (!toolsJson) {
-            console.log("[openaiHelper] No se detectÃ³ OPENAI_TOOLS_DEFINITION. Verificando DB_TABLES para autogeneraciÃ³n...");
+            console.log("[openaiHelper] No se detectó OPENAI_TOOLS_DEFINITION. Verificando DB_TABLES para autogeneración...");
             const dbTablesStr = await HistoryHandler.getSetting('DB_TABLES', targetProjectId, targetServiceId);
 
             if (dbTablesStr && dbTablesStr.trim() !== "") {
                 try {
                     const { autoUpdateBotAbilities } = await import("./toolGenerator");
                     const tableNames = dbTablesStr.split(',').map(t => t.trim());
-                    console.log(`[openaiHelper] ðŸ¤– Intentando autogenerar tools para tablas: ${dbTablesStr}`);
+                    console.log(`[openaiHelper] 🤖 Intentando autogenerar tools para tablas: ${dbTablesStr}`);
                     await autoUpdateBotAbilities(tableNames, targetProjectId, targetServiceId || undefined);
 
-                    // Re-intentar obtener la definiciÃ³n reciÃ©n generada
+                    // Re-intentar obtener la definición recién generada
                     toolsJson = await HistoryHandler.getSetting('OPENAI_TOOLS_DEFINITION', targetProjectId, targetServiceId);
                 } catch (genError: any) {
-                    console.error("[openaiHelper] âŒ Error en autogeneraciÃ³n de tools:", genError.message);
+                    console.error("[openaiHelper] ❌ Error en autogeneración de tools:", genError.message);
                 }
             }
 
             if (!toolsJson) {
-                console.log("[openaiHelper] âš ï¸ SincronizaciÃ³n de tools omitida: No hay definiciÃ³n ni tablas para generar.");
+                console.log("[openaiHelper] ⚠️ Sincronización de tools omitida: No hay definición ni tablas para generar.");
                 return false;
             }
         }
 
         const tools = safeParseJson(toolsJson);
         if (!Array.isArray(tools)) {
-            console.log("[openaiHelper] âš ï¸ DefiniciÃ³n de tools no es un array vÃ¡lido.");
+            console.log("[openaiHelper] ⚠️ Definición de tools no es un array válido.");
             return false;
         }
 
-        // --- FILTRADO AUTOMÃTICO DE HERRAMIENTAS POR PROMPT DEL ASISTENTE ---
-        // 1. Identificar cuÃ¡l de los 5 asistentes (asistente1..5) corresponde a este assistantId
+        // --- FILTRADO AUTOMÁTICO DE HERRAMIENTAS POR PROMPT DEL ASISTENTE ---
+        // 1. Identificar cuál de los 5 asistentes (asistente1..5) corresponde a este assistantId
         const assistantsKeys = ['ASSISTANT_ID', 'ASSISTANT_2', 'ASSISTANT_3', 'ASSISTANT_4', 'ASSISTANT_5'];
         let assistantIndex = '1';
         for (const envKey of assistantsKeys) {
@@ -389,38 +389,38 @@ export async function syncAssistantTools(assistantId: string, projectId: string 
             }
         }
 
-        // 2. Obtener el prompt especÃ­fico del asistente correspondiente
+        // 2. Obtener el prompt específico del asistente correspondiente
         const promptKey = assistantIndex === '1' ? 'ASSISTANT_PROMPT' : `ASSISTANT_PROMPT_${assistantIndex}`;
         const prompt = await HistoryHandler.getSetting(promptKey, targetProjectId, targetServiceId);
 
-        // 3. Filtrar herramientas: Solo incluimos la herramienta si su nombre lÃ³gico se menciona en el prompt
+        // 3. Filtrar herramientas: Solo incluimos la herramienta si su nombre lógico se menciona en el prompt
         let filteredTools = tools;
         if (prompt && prompt.trim() !== '') {
             filteredTools = tools.filter((tool: any) => {
                 const funcName = tool.function?.name || tool.name;
-                if (!funcName) return true; // Si no tiene nombre por alguna razÃ³n, dejarla
+                if (!funcName) return true; // Si no tiene nombre por alguna razón, dejarla
 
                 // Buscamos la palabra exacta del nombre de la herramienta en el prompt
                 const regex = new RegExp(`\\b${funcName}\\b`, 'i');
                 const isMentioned = regex.test(prompt);
 
                 if (!isMentioned) {
-                    console.log(`ðŸ” [openaiHelper] Excluyendo herramienta '${funcName}' para el asistente ${assistantIndex} (No mencionada en el prompt).`);
+                    console.log(`🔍 [openaiHelper] Excluyendo herramienta '${funcName}' para el asistente ${assistantIndex} (No mencionada en el prompt).`);
                 }
                 return isMentioned;
             });
         }
 
-        console.log(`[openaiHelper] ðŸ”„ Sincronizando ${filteredTools.length} de ${tools.length} herramientas con el asistente ${assistantId}...`);
+        console.log(`[openaiHelper] 🔄 Sincronizando ${filteredTools.length} de ${tools.length} herramientas con el asistente ${assistantId}...`);
 
         await openai.beta.assistants.update(assistantId, {
             tools: filteredTools
         });
 
-        console.log("[openaiHelper] âœ… Herramientas sincronizadas correctamente.");
+        console.log("[openaiHelper] ✅ Herramientas sincronizadas correctamente.");
         return true;
     } catch (error: any) {
-        console.error("[openaiHelper] âŒ Error sincronizando herramientas:", error.message);
+        console.error("[openaiHelper] ❌ Error sincronizando herramientas:", error.message);
         return false;
     }
 }
@@ -434,24 +434,24 @@ export const askWithFunctions = async (assistantId: string, message: string, sta
 
         const openai = await getOpenAI(targetProjectId, targetServiceId);
         if (!openai) {
-            console.warn("âš ï¸ OPENAI_API_KEY no detectada. El asistente de IA estÃ¡ desactivado.");
+            console.warn("⚠️ OPENAI_API_KEY no detectada. El asistente de IA está desactivado.");
             return "";
         }
 
         // 1. Cargar Historial (Contexto)
-        // Si el mensaje es una peticiÃ³n de resumen, traemos mucho mÃ¡s contexto (50 mensajes)
+        // Si el mensaje es una petición de resumen, traemos mucho más contexto (50 mensajes)
         const isSummaryRequest = /GET_RESUMEN/i.test(message);
         const historyLimit = isSummaryRequest ? 50 : 15;
         const history = await HistoryHandler.getMessages(userId, historyLimit, 0, targetProjectId, targetServiceId);
-        console.log(`[openaiHelper] ðŸ“œ Historial recuperado para ${userId}: ${history.length} mensajes (Limit: ${historyLimit}) | Project: ${targetProjectId} | Service: ${targetServiceId}`);
+        console.log(`[openaiHelper] 📜 Historial recuperado para ${userId}: ${history.length} mensajes (Limit: ${historyLimit}) | Project: ${targetProjectId} | Service: ${targetServiceId}`);
 
-        // Cargar datos del chat para obtener el Ãºltimo resultado de BD y service_id
+        // Cargar datos del chat para obtener el último resultado de BD y service_id
         const chatData = await HistoryHandler.getChat(userId, targetProjectId, targetServiceId);
         const lastDbResult = chatData?.last_db_result;
         const chatServiceId = chatData?.service_id || targetServiceId;
 
         // 2. Preparar el prompt del sistema
-        // Intentar obtener un prompt especÃ­fico para este asistente usando su nombre lÃ³gico (asistente1, asistente2...)
+        // Intentar obtener un prompt específico para este asistente usando su nombre lógico (asistente1, asistente2...)
         let promptKey = 'ASSISTANT_PROMPT';
         if (agentName && agentName !== 'asistente1') {
             const num = agentName.replace('asistente', '');
@@ -460,12 +460,12 @@ export const askWithFunctions = async (assistantId: string, message: string, sta
 
         let systemPrompt = await HistoryHandler.getSetting(promptKey, targetProjectId, chatServiceId);
 
-        // Fallback: si no hay por nombre lÃ³gico, intentar por Assistant ID (legacy)
+        // Fallback: si no hay por nombre lógico, intentar por Assistant ID (legacy)
         if (!systemPrompt) {
             systemPrompt = await HistoryHandler.getSetting(`ASSISTANT_PROMPT_${assistantId}`, targetProjectId, chatServiceId);
         }
 
-        // Segundo Fallback: usar el genÃ©rico 'ASSISTANT_PROMPT'
+        // Segundo Fallback: usar el genérico 'ASSISTANT_PROMPT'
         if (!systemPrompt) {
             const dbPrompt = await HistoryHandler.getSetting('ASSISTANT_PROMPT', targetProjectId, chatServiceId);
             systemPrompt = dbPrompt || await HistoryHandler.getConfig('ASSISTANT_PROMPT', targetProjectId, chatServiceId) || "Eres un asistente servicial.";
@@ -476,13 +476,13 @@ export const askWithFunctions = async (assistantId: string, message: string, sta
         const cleanSlug = String(slug || '').trim().toLowerCase();
 
         if (cleanSlug === 'aquavita') {
-            systemPrompt += `\n\nINSTRUCCIÃ“N CRÃTICA DE PERSISTENCIA Y MEMORIA:
+            systemPrompt += `\n\nINSTRUCCIÓN CRÍTICA DE PERSISTENCIA Y MEMORIA:
 - Dispones de la herramienta 'ACTUALIZAR_CONTEXTO'.
-- Tan pronto como el usuario te proporcione datos clave como su nombre, direcciÃ³n (calle y nÃºmero), telÃ©fono o DNI/CUIT, DEBES llamar inmediatamente a la herramienta 'ACTUALIZAR_CONTEXTO' para registrar estos datos en la memoria de la conversaciÃ³n.
-- Esto es sumamente importante para evitar que el bot olvide la informaciÃ³n si la conversaciÃ³n se extiende, ya que el historial de mensajes se trunca.`;
+- Tan pronto como el usuario te proporcione datos clave como su nombre, dirección (calle y número), teléfono o DNI/CUIT, DEBES llamar inmediatamente a la herramienta 'ACTUALIZAR_CONTEXTO' para registrar estos datos en la memoria de la conversación.
+- Esto es sumamente importante para evitar que el bot olvide la información si la conversación se extiende, ya que el historial de mensajes se trunca.`;
         }
 
-        // Filtrar mensajes vÃ¡lidos y formatear para OpenAI
+        // Filtrar mensajes válidos y formatear para OpenAI
         const formattedHistory = history
             .filter(m => m.role === 'user' || m.role === 'assistant')
             .filter(m => m.content && m.content.trim() !== "")
@@ -491,7 +491,7 @@ export const askWithFunctions = async (assistantId: string, message: string, sta
                 content: m.content
             }));
 
-        // 2.2 Evitar duplicar el mensaje actual si ya se guardÃ³ en el historial (comÃºn en este sistema)
+        // 2.2 Evitar duplicar el mensaje actual si ya se guardó en el historial (común en este sistema)
         const lastMsg = formattedHistory.length > 0 ? formattedHistory[formattedHistory.length - 1] : null;
         const isAlreadyInHistory = lastMsg && lastMsg.role === 'user' && lastMsg.content.trim() === message.trim();
 
@@ -500,23 +500,23 @@ export const askWithFunctions = async (assistantId: string, message: string, sta
             ...formattedHistory
         ];
 
-        // 2.5 Refuerzo para ResÃºmenes: Si es un resumen, inyectar una instrucciÃ³n clara ANTES del comando
+        // 2.5 Refuerzo para Resúmenes: Si es un resumen, inyectar una instrucción clara ANTES del comando
         if (isSummaryRequest) {
-            console.log(`[openaiHelper] ðŸ“‹ Solicitud de Resumen detectada. Historial disponible: ${formattedHistory.length} mensajes.`);
+            console.log(`[openaiHelper] 📋 Solicitud de Resumen detectada. Historial disponible: ${formattedHistory.length} mensajes.`);
             messages.push({
                 role: "system",
-                content: `INSTRUCCIÃ“N CRÃTICA DE RESUMEN:
+                content: `INSTRUCCIÓN CRÍTICA DE RESUMEN:
                 - Se te ha pasado un historial de ${formattedHistory.length} mensajes arriba.
-                - Tu tarea ÃšNICA es generar un resumen estructurado basado en esos mensajes.
-                - Si el historial es corto, resume lo que hay (ej: 'InteracciÃ³n inicial, solo saludos').
-                - NUNCA respondas con frases de error como 'No tengo suficiente informaciÃ³n' o similares.
+                - Tu tarea ÚNICA es generar un resumen estructurado basado en esos mensajes.
+                - Si el historial es corto, resume lo que hay (ej: 'Interacción inicial, solo saludos').
+                - NUNCA respondas con frases de error como 'No tengo suficiente información' o similares.
                 - Sigue la ESTRUCTURA definida en tu prompt (ej: 'Tipo: ...', 'Nombre: ...').
                 - Si el prompt pide JSON, responde JSON. Si pide texto plano, responde texto plano.
-                - Responde Ãºnicamente con la informaciÃ³n solicitada en el bloque GET_RESUMEN.`
+                - Responde únicamente con la información solicitada en el bloque GET_RESUMEN.`
             });
         }
 
-        // Agregar el mensaje actual del usuario solo si NO estÃ¡ ya en el historial
+        // Agregar el mensaje actual del usuario solo si NO está ya en el historial
         if (!isAlreadyInHistory) {
             messages.push({ role: "user", content: message });
         }
@@ -550,44 +550,44 @@ export const askWithFunctions = async (assistantId: string, message: string, sta
 
         let leadContext = '';
         if (cleanSlug === 'ganemos' || cleanSlug === 'ganemos-net' || cleanSlug === 'cas-epc' || cleanSlug === 'casepc') {
-            leadContext = `\n\nDATOS DEL CLIENTE EN CRM (Ãšsalos para personalizar tu respuesta):
+            leadContext = `\n\nDATOS DEL CLIENTE EN CRM (Úsalos para personalizar tu respuesta):
 - Nombre: ${finalName}
 - Usuario / DNI (Nombre de usuario en la plataforma de juego): ${finalDni}
-- Correo ElectrÃ³nico: ${finalEmail}
+- Correo Electrónico: ${finalEmail}
 - Domicilio: ${finalAddress}
 - Notas del CRM: ${chatData?.notes || 'Sin notas'}
 
-INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
+INSTRUCCIÓN CRÍTICA DE IDENTIDAD DE JUGADOR:
 - El campo 'Usuario / DNI' representa el nombre de usuario oficial del jugador en la plataforma.
-- Para las llamadas de herramientas 'DEPOSITAR' o 'RETIRAR', debes utilizar este nombre de usuario registrado en la base de datos (${finalDni}) como argumento 'username', a menos que el usuario del chat te indique explÃ­citamente en su mensaje que la operaciÃ³n es para un usuario distinto.`;
+- Para las llamadas de herramientas 'DEPOSITAR' o 'RETIRAR', debes utilizar este nombre de usuario registrado en la base de datos (${finalDni}) como argumento 'username', a menos que el usuario del chat te indique explícitamente en su mensaje que la operación es para un usuario distinto.`;
         } else if (cleanSlug === 'aquavita') {
-            leadContext = `\n\nDATOS DEL CLIENTE EN CRM (Ãšsalos para personalizar tu respuesta y evitar volver a preguntarlos):
+            leadContext = `\n\nDATOS DEL CLIENTE EN CRM (Úsalos para personalizar tu respuesta y evitar volver a preguntarlos):
 - Nombre: ${finalName}
 - Nro Cliente / DNI: ${finalDni}
-- Correo ElectrÃ³nico: ${finalEmail}
-- DirecciÃ³n: ${finalAddress}
+- Correo Electrónico: ${finalEmail}
+- Dirección: ${finalAddress}
 - Tipo Cliente: ${finalTax}
 - Producto Ofrecido: ${chatData?.offered_product || 'No especificado'}
 - Notas del CRM: ${chatData?.notes || 'Sin notas'}`;
         } else {
-            leadContext = `\n\nDATOS DEL CLIENTE EN CRM (Ãšsalos para personalizar tu respuesta):
+            leadContext = `\n\nDATOS DEL CLIENTE EN CRM (Úsalos para personalizar tu respuesta):
 - Nombre: ${finalName}
 - Cuil / Cuit / DNI: ${finalDni}
-- Correo ElectrÃ³nico: ${finalEmail}
+- Correo Electrónico: ${finalEmail}
 - Domicilio: ${finalAddress}
-- SituaciÃ³n Impositiva: ${finalTax}
+- Situación Impositiva: ${finalTax}
 - Producto Ofrecido: ${chatData?.offered_product || 'No especificado'}
 - Notas del CRM: ${chatData?.notes || 'Sin notas'}`;
         }
 
         messages[0].content += `\n\nFecha/Hora Actual (Argentina): ${currentDatetimeArg}\nID de Usuario: ${userId}${contactNameInfo}\nProject ID: ${targetProjectId}${leadContext}`;
 
-        // Inyectar el Ãºltimo resultado de base de datos si existe en la base de datos
+        // Inyectar el último resultado de base de datos si existe en la base de datos
         if (lastDbResult) {
-            messages[0].content += `\n\n[ÃšLTIMO RESULTADO DE BASE DE DATOS CACHEADO]:\n${lastDbResult}\n(Usa esta informaciÃ³n de mÃ¡quinas/preguntas anteriores si el usuario se refiere a ella o te pregunta al respecto, para responder de inmediato sin necesidad de volver a ejecutar la consulta query_database a menos que sea estrictamente necesario)`;
+            messages[0].content += `\n\n[ÚLTIMO RESULTADO DE BASE DE DATOS CACHEADO]:\n${lastDbResult}\n(Usa esta información de máquinas/preguntas anteriores si el usuario se refiere a ella o te pregunta al respecto, para responder de inmediato sin necesidad de volver a ejecutar la consulta query_database a menos que sea estrictamente necesario)`;
         }
 
-        // Inyectar contexto RAG de documentos de Supabase si existe coincidencia semÃ¡ntica
+        // Inyectar contexto RAG de documentos de Supabase si existe coincidencia semántica
         // 3. Preparar Herramientas (Tools)
         let tools: any[] = [];
         const toolsJson = await HistoryHandler.getSetting('OPENAI_TOOLS_DEFINITION', targetProjectId, chatServiceId);
@@ -602,7 +602,7 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
                             processed = { type: "function", function: processed };
                         }
 
-                        // 2. Corregir esquema de parÃ¡metros si es invÃ¡lido
+                        // 2. Corregir esquema de parámetros si es inválido
                         if (processed.function && processed.function.parameters) {
                             if (!processed.function.parameters.type || processed.function.parameters.type === 'None') {
                                 processed.function.parameters.type = 'object';
@@ -614,7 +614,7 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
                         return processed;
                     });
 
-                    // Filtrar dinÃ¡micamente las herramientas por menciÃ³n en el prompt del sistema
+                    // Filtrar dinámicamente las herramientas por mención en el prompt del sistema
                     if (systemPrompt && systemPrompt.trim() !== '') {
                         tools = unparsedTools.filter((tool: any) => {
                             const funcName = tool.function?.name || tool.name;
@@ -632,11 +632,11 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
             }
         }
 
-        // Inyectar definiciones de herramientas RAG si se requieren segÃºn el prompt
+        // Inyectar definiciones de herramientas RAG si se requieren según el prompt
         tools = RagToolManager.injectRagToolsIfNeeded(tools, systemPrompt);
 
 
-        // 4. Bucle de ejecuciÃ³n para Chat Completions con Function Calling
+        // 4. Bucle de ejecución para Chat Completions con Function Calling
         let responseContent = "";
         let continueLoop = true;
         let attempts = 0;
@@ -654,7 +654,7 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
             const responseMessage = completion.choices[0].message;
 
             if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-                // Agregar la peticiÃ³n de la herramienta al historial del chat
+                // Agregar la petición de la herramienta al historial del chat
                 messages.push(responseMessage);
 
                 // Procesar cada llamada a herramienta
@@ -667,7 +667,7 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
                     let toolResult = "";
                     if (funcName === "query_database") {
                         const { tabla, dato } = args as any;
-                        // Usar el projectId dinÃ¡mico para validar las tablas permitidas de los clientes.
+                        // Usar el projectId dinámico para validar las tablas permitidas de los clientes.
                         const dbTablesStr = await HistoryHandler.getConfig('DB_TABLES', targetProjectId, chatServiceId) || "";
                         const allowedTables = dbTablesStr.split(',').map(t => t.trim());
 
@@ -678,7 +678,7 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
                             const sql = `SELECT * FROM "${tabla}" WHERE "${tabla}"::text ~* '${safeDato}' LIMIT 25;`;
                             toolResult = await executeDbQuery(sql);
 
-                            // Persistir el resultado para que estÃ© disponible en futuros turnos del contexto
+                            // Persistir el resultado para que esté disponible en futuros turnos del contexto
                             await HistoryHandler.updateLastDbResult(userId, toolResult, targetProjectId ?? undefined, chatServiceId);
                         }
                     } else if (funcName === "search_knowledge_base" || funcName === "file_search") {
@@ -686,7 +686,7 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
                             const query = args.query || args.busqueda || args.q || "";
                             const { searchKnowledgeBase } = await import("../../rag/ragService.js");
                             toolResult = await searchKnowledgeBase(targetProjectId || "default", query, 5, chatServiceId);
-                            if (!toolResult) toolResult = "No se encontrÃ³ informaciÃ³n relevante en la base de conocimientos.";
+                            if (!toolResult) toolResult = "No se encontró información relevante en la base de conocimientos.";
                         } catch (ragToolErr: any) {
                             toolResult = "Error consultando la base de conocimientos: " + ragToolErr.message;
                         }
@@ -719,7 +719,7 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
                         content: toolResult,
                     });
                 }
-                // El bucle continuarÃ¡ para que OpenAI procese los resultados de las herramientas
+                // El bucle continuará para que OpenAI procese los resultados de las herramientas
             } else {
                 responseContent = responseMessage.content || "";
                 continueLoop = false;
@@ -733,7 +733,7 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
 
         let humanMessage = `Error [${errorCode}]: OpenAI no pudo generar una respuesta para el mensaje de [${userId}]. Detalle: ${error.message}`;
         if (errorCode === 429) {
-            humanMessage = `Error [429]: Saldo insuficiente o lÃ­mite de cuota excedido en OpenAI. El bot no le contestÃ³ a [${userId}].`;
+            humanMessage = `Error [429]: Saldo insuficiente o límite de cuota excedido en OpenAI. El bot no le contestó a [${userId}].`;
         }
 
         await SystemLogger.error('OPENAI', humanMessage, userId, {
@@ -742,15 +742,15 @@ INSTRUCCIÃ“N CRÃTICA DE IDENTIDAD DE JUGADOR:
             status: error.status
         });
 
-        console.error("[openaiHelper] âŒ Error en Chat Completions:", error.message);
+        console.error("[openaiHelper] ❌ Error en Chat Completions:", error.message);
         throw error;
     }
 };
 
 
 /**
- * PeticiÃ³n Segura con Reintentos (safeToAsk)
- * Centraliza la lÃ³gica de comunicaciÃ³n con OpenAI Chat Completions.
+ * Petición Segura con Reintentos (safeToAsk)
+ * Centraliza la lógica de comunicación con OpenAI Chat Completions.
  */
 export const safeToAsk = async (
     assistantId: string,
@@ -778,9 +778,9 @@ export const safeToAsk = async (
                     console.error(`[openaiHelper] Intento ${attempt} fallido:`, err.message);
 
                     const status = err.status || err.code;
-                    // Si es un error de clave invÃ¡lida o permisos, abortar de inmediato sin reintentar
+                    // Si es un error de clave inválida o permisos, abortar de inmediato sin reintentar
                     if (status === 401 || status === 403) {
-                        console.error("[openaiHelper] ðŸ›‘ Error de autenticaciÃ³n (401/403) detectado. Abortando reintentos.");
+                        console.error("[openaiHelper] 🛑 Error de autenticación (401/403) detectado. Abortando reintentos.");
                         throw err;
                     }
 
